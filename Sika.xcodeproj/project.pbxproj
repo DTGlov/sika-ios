@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		D1A0CFG10FF1CE0000000010 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = D1A0CFG10FF1CE0000000012 /* Supabase */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		6375DF722FAA7445008470C1 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,11 +31,31 @@
 		6375DF642FAA7443008470C1 /* Sika.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sika.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6375DF712FAA7445008470C1 /* SikaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SikaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6375DF7B2FAA7445008470C1 /* SikaUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SikaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D1A0CFG10FF1CE0000000001 /* Sika.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Sika.xcconfig; sourceTree = "<group>"; };
+		D1A0CFG10FF1CE0000000002 /* Sika.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Sika.example.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		D1A0CFG10FF1CE0000000020 /* Exceptions for "Sika" folder in "Sika" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Core/Extensions/.gitkeep,
+				Core/Models/.gitkeep,
+				Core/Services/.gitkeep,
+				Features/.gitkeep,
+				Info.plist,
+				Resources/Fonts/.gitkeep,
+			);
+			target = 6375DF632FAA7443008470C1 /* Sika */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		6375DF662FAA7443008470C1 /* Sika */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				D1A0CFG10FF1CE0000000020 /* Exceptions for "Sika" folder in "Sika" target */,
+			);
 			path = Sika;
 			sourceTree = "<group>";
 		};
@@ -52,6 +76,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D1A0CFG10FF1CE0000000010 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -75,6 +100,8 @@
 		6375DF5B2FAA7443008470C1 = {
 			isa = PBXGroup;
 			children = (
+				D1A0CFG10FF1CE0000000001 /* Sika.xcconfig */,
+				D1A0CFG10FF1CE0000000002 /* Sika.example.xcconfig */,
 				6375DF662FAA7443008470C1 /* Sika */,
 				6375DF742FAA7445008470C1 /* SikaTests */,
 				6375DF7E2FAA7445008470C1 /* SikaUITests */,
@@ -112,6 +139,7 @@
 			);
 			name = Sika;
 			packageProductDependencies = (
+				D1A0CFG10FF1CE0000000012 /* Supabase */,
 			);
 			productName = Sika;
 			productReference = 6375DF642FAA7443008470C1 /* Sika.app */;
@@ -195,6 +223,9 @@
 			);
 			mainGroup = 6375DF5B2FAA7443008470C1;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				D1A0CFG10FF1CE0000000011 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 6375DF652FAA7443008470C1 /* Products */;
 			projectDirPath = "";
@@ -271,6 +302,7 @@
 /* Begin XCBuildConfiguration section */
 		6375DF832FAA7445008470C1 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = D1A0CFG10FF1CE0000000001 /* Sika.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -335,6 +367,7 @@
 		};
 		6375DF842FAA7445008470C1 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = D1A0CFG10FF1CE0000000001 /* Sika.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -399,12 +432,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3XF8467583;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sika/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -432,12 +461,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3XF8467583;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sika/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -580,6 +605,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D1A0CFG10FF1CE0000000011 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D1A0CFG10FF1CE0000000012 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D1A0CFG10FF1CE0000000011 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 6375DF5C2FAA7443008470C1 /* Project object */;
 }

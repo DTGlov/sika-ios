@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+*.swp
+
+# Xcode — build artifacts
+build/
+DerivedData/
+
+# Xcode — user-specific state (do NOT commit)
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Swift Package Manager — local caches
+# Note: Package.resolved under xcshareddata/ is intentionally tracked
+# (shared dependency lock). Only ignore root-level SPM caches.
+.swiftpm/
+.build/
+Packages/
+/Package.resolved
+
+# Secrets — never commit real credentials
+Sika.xcconfig
+*.local.xcconfig
+.env
+.env.*
+
+# IDE
+.vscode/
