@@ -61,9 +61,21 @@ enum SikaTheme {
 
     enum Typography {
         static let sansFamily = "Geist"
-        static let monoFamily = "Geist Mono"
-        static let fallbackSans = "system"
-        static let fallbackMono = "Menlo"
+        static let monoFamily = "GeistMono"
+
+        static func sans(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+            let postScriptName: String
+            switch weight {
+            case .bold: postScriptName = "Geist-Bold"
+            case .semibold: postScriptName = "Geist-SemiBold"
+            default: postScriptName = "Geist-Regular"
+            }
+            return Font.custom(postScriptName, size: size)
+        }
+
+        static func mono(_ size: CGFloat) -> Font {
+            return Font.custom("GeistMono-Regular", size: size)
+        }
     }
 }
 
