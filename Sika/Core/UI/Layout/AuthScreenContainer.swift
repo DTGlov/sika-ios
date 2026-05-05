@@ -8,19 +8,20 @@ struct AuthScreenContainer<Content: View>: View {
     @State private var didAppear: Bool = false
 
     var body: some View {
-        ScrollView {
+        VStack(spacing: 0) {
+            Spacer(minLength: SikaTheme.Spacing.xl)
+
             VStack(spacing: SikaTheme.Spacing.xl) {
                 header
                 card
             }
-            .padding(.horizontal, SikaTheme.Spacing.lg)
-            .padding(.top, SikaTheme.Spacing.xl3)
-            .padding(.bottom, SikaTheme.Spacing.xl)
             .frame(maxWidth: 360)
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, SikaTheme.Spacing.lg)
+
+            Spacer(minLength: SikaTheme.Spacing.xl)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(SikaTheme.Color.background)
-        .scrollDismissesKeyboard(.interactively)
         .opacity(didAppear ? 1 : 0)
         .offset(y: didAppear ? 0 : 24)
         .onAppear {
