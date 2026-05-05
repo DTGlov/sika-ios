@@ -27,13 +27,13 @@ struct SikaApp: App {
         }
     }
 
-    var body: some Scene {
-        WindowGroup {
-            RootView()
-                .environment(appState)
-                .environment(toastManager)
-                .sikaToastOverlay()
-                .task { await appState.bootstrap() }
-        }
+var body: some Scene {
+    WindowGroup {
+        RootView()
+            .sikaToastOverlay()
+            .environment(appState)
+            .environment(toastManager)
+            .task { await appState.bootstrap() }
     }
+}
 }
