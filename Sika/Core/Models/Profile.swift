@@ -1,37 +1,56 @@
 import Foundation
 
+/// Mirrors the public.profiles table.
+///
+/// NOTE: Email is NOT on this model. The profiles table has no email column —
+/// email lives on auth.users and is reachable via session.user.email.
+///
+/// NOTE: The DB has both a `currency` column (active) and a `currency_code`
+/// column (dead, unused — leftover from an incomplete migration). We model
+/// only `currency`. Web reads/writes the same field.
 struct Profile: Codable, Identifiable, Equatable {
     let id: UUID
     let fullName: String?
-    let email: String?
-    let monthlyIncome: Decimal
-    let currency: String
-    let cycleStartDay: Int
-    let needsPercentage: Decimal
-    let wantsPercentage: Decimal
-    let savingsPercentage: Decimal
-    let themePreference: String?
-    let cycleCardTheme: String?
+    let monthlyIncome: Decimal?
+    let currency: String                // NOT NULL in DB
+    let needsPercent: Decimal?
+    let wantsPercent: Decimal?
+    let savingsPercent: Decimal?
+    let cycleStartDay: Int?
+    let cardTheme: String               // NOT NULL in DB
+    let themePreference: String         // NOT NULL in DB ("light" | "dark")
+    let hapticsEnabled: Bool?
+    let accountsBannerDismissed: Bool   // NOT NULL in DB
     let createdAt: Date?
     let updatedAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id
         case fullName = "full_name"
-        case email
         case monthlyIncome = "monthly_income"
         case currency
+        case needsPercent = "needs_percent"
+        case wantsPercent = "wants_percent"
+        case savingsPercent = "savings_percent"
         case cycleStartDay = "cycle_start_day"
-        case needsPercentage = "needs_percentage"
-        case wantsPercentage = "wants_percentage"
-        case savingsPercentage = "savings_percentage"
+        case cardTheme = "card_theme"
         case themePreference = "theme_preference"
-        case cycleCardTheme = "cycle_card_theme"
+        case hapticsEnabled = "haptics_enabled"
+        case accountsBannerDismissed = "accounts_banner_dismissed"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
 
+    /// First name extracted from fullName for greeting display.
     var firstName: String? {
         fullName?.split(separator: " ").first.map(String.init)
     }
+
+    // The DB allows null on these fields, but Sika's product spec locks
+    // the defaults at 45/15/40. Read sites use these computed properties
+    // so the app is robust to partial profile rows.
+
+    var needsPercentValue: Decimal { needsPercent ?? 45 }
+    var wantsPercentValue: Decimal { wantsPercent ?? 15 }
+    var savingsPercentValue: Decimal { savingsPercent ?? 40 }
 }
