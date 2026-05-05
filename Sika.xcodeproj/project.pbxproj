@@ -40,11 +40,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Core/Extensions/.gitkeep,
-				Core/Models/.gitkeep,
-				Core/Services/.gitkeep,
-				Features/.gitkeep,
 				Info.plist,
-				Resources/Fonts/.gitkeep,
 			);
 			target = 6375DF632FAA7443008470C1 /* Sika */;
 		};
