@@ -15,6 +15,11 @@ enum SikaTheme {
         static let muted = SwiftUI.Color(hex: 0xF1EFE6)
         static let mutedForeground = SwiftUI.Color(hex: 0x6B7A8D)
 
+        /// Higher-contrast color for input placeholders. WCAG AA compliant
+        /// against both card (#FFFFFF) and input (#F1EFE6) backgrounds.
+        /// Don't use this for secondary text — that's mutedForeground.
+        static let placeholderText = SwiftUI.Color(hex: 0x525E70)
+
         static let border = SwiftUI.Color(hex: 0xE2DCCF)
 
         static let destructive = SwiftUI.Color(hex: 0xF43F5E)
