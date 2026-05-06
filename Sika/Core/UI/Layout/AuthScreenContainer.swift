@@ -31,7 +31,7 @@ struct AuthScreenContainer<Content: View>: View {
 
     private var header: some View {
         VStack(spacing: SikaTheme.Spacing.md) {
-            HStack(spacing: SikaTheme.Spacing.sm) {
+            HStack(spacing: SikaTheme.Spacing.xs) {
                 SikaMark(size: 36)
                 Text("Sika")
                     .font(SikaTheme.Typography.sans(28, weight: .bold))
