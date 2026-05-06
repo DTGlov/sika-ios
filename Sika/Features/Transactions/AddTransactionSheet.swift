@@ -12,7 +12,7 @@ struct AddTransactionSheet: View {
             Text("Add Transaction")
                 .font(SikaTheme.Typography.sans(20, weight: .bold))
                 .foregroundStyle(SikaTheme.Color.foreground)
-            Text("Coming in 1B-2")
+            Text("Coming soon — redesign in progress")
                 .font(SikaTheme.Typography.sans(14))
                 .foregroundStyle(SikaTheme.Color.mutedForeground)
             Spacer()
