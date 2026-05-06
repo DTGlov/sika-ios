@@ -131,14 +131,34 @@ private struct NextButton: View {
 // MARK: - Preview
 
 #Preview("Step 1 — empty") {
-    AddTransactionStep1View(accounts: previewMockAccounts())
+    PreviewSheetWrapper {
+        AddTransactionStep1View(accounts: previewMockAccounts())
+    }
 }
 
 #Preview("Step 1 — transfer mode") {
-    AddTransactionStep1View(accounts: [
-        previewMockAccount(name: "Bank", type: .general),
-        previewMockAccount(name: "Savings", type: .savings),
-    ])
+    PreviewSheetWrapper {
+        AddTransactionStep1View(accounts: [
+            previewMockAccount(name: "Bank", type: .general),
+            previewMockAccount(name: "Savings", type: .savings),
+        ])
+    }
+}
+
+/// Wrapper that simulates sheet presentation in the preview canvas so we
+/// see the view with proper safe-area handling, matching how it'll render
+/// when integrated into a real .sheet() in 1B-2e.
+private struct PreviewSheetWrapper<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    @State private var isShown = true
+
+    var body: some View {
+        Color.black.opacity(0.05)
+            .ignoresSafeArea()
+            .sheet(isPresented: $isShown) {
+                content()
+            }
+    }
 }
 
 // MARK: - PREVIEW-ONLY MOCK DATA
