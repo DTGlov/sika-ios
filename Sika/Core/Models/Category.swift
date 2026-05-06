@@ -13,6 +13,7 @@ struct TransactionCategory: Codable, Identifiable, Equatable, Hashable {
     let categoryType: CategoryType
     let bucketId: UUID?
     let archived: Bool?
+    let isFavorite: Bool?
     let createdAt: Date?
     let updatedAt: Date?
 
@@ -23,6 +24,7 @@ struct TransactionCategory: Codable, Identifiable, Equatable, Hashable {
         case categoryType = "category_type"
         case bucketId = "bucket_id"
         case archived
+        case isFavorite = "is_favorite"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }

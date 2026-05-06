@@ -14,6 +14,10 @@ enum AuthFlow: Equatable {
 @Observable
 @MainActor
 final class AppState {
+    // TODO: AppState now manages 7+ fields (flow/profile, accounts, categories,
+    // incomeSources, transactions, pendingTransactions, onboardingDismissedThisSession).
+    // Approaching the natural limit of a single observable container. Future refactor
+    // candidate: split into TransactionStore, AccountStore, etc.
     private(set) var flow: AuthFlow = .signIn
     private(set) var session: Session?
     private(set) var isPerformingAuthAction: Bool = false
@@ -21,6 +25,8 @@ final class AppState {
     private(set) var incomeSources: [IncomeSource] = []
     private(set) var accounts: [Account] = []
     private(set) var categories: [TransactionCategory] = []
+    private(set) var transactions: [Transaction] = []
+    private(set) var pendingTransactions: [Transaction] = []
     private(set) var onboardingDismissedThisSession: Bool = false
 
     private let authService: AuthService
@@ -28,6 +34,7 @@ final class AppState {
     private let incomeService: IncomeService
     private let accountService: AccountService
     private let categoryService: CategoryService
+    private let transactionService: TransactionService
     private var authObserverTask: Task<Void, Never>?
 
     init(
@@ -35,13 +42,42 @@ final class AppState {
         profileService: ProfileService = ProfileService(),
         incomeService: IncomeService = IncomeService(),
         accountService: AccountService = AccountService(),
-        categoryService: CategoryService = CategoryService()
+        categoryService: CategoryService = CategoryService(),
+        transactionService: TransactionService = TransactionService()
     ) {
         self.authService = authService
         self.profileService = profileService
         self.incomeService = incomeService
         self.accountService = accountService
         self.categoryService = categoryService
+        self.transactionService = transactionService
+    }
+
+    /// Active currency code from the authenticated profile, or "GHS" as fallback.
+    var currencyCode: String {
+        guard case .authenticated(let profile) = flow else { return "GHS" }
+        return profile.currency
+    }
+
+    // MARK: - Optimistic transaction inserts
+
+    /// Insert a row into pendingTransactions immediately for instant UI feedback.
+    /// Use UUID() for the temp id; we replace it with the real row when confirmed.
+    func addOptimisticTransaction(_ transaction: Transaction) {
+        var copy = transaction
+        copy.isPending = true
+        pendingTransactions.insert(copy, at: 0)
+    }
+
+    /// On confirmed Supabase insert, swap the optimistic row for the real row.
+    func replaceOptimisticTransaction(tempId: UUID, with persisted: Transaction) {
+        pendingTransactions.removeAll { $0.id == tempId }
+        transactions.insert(persisted, at: 0)
+    }
+
+    /// On Supabase failure, remove the optimistic row.
+    func removeOptimisticTransaction(tempId: UUID) {
+        pendingTransactions.removeAll { $0.id == tempId }
     }
 
     var shouldShowOnboarding: Bool {
@@ -170,16 +206,19 @@ final class AppState {
             return
         }
 
-        // Income/accounts/categories run in parallel and are non-blocking —
+        // Income/accounts/categories/transactions run in parallel and are non-blocking —
         // RLS errors / empty rows shouldn't bounce the user out of auth.
         async let sourcesResult: [IncomeSource] = fetchIncomeSourcesOrEmpty()
         async let accountsResult: [Account] = fetchAccountsOrEmpty()
         async let categoriesResult: [TransactionCategory] = fetchCategoriesOrEmpty()
-        let (sources, accounts, categories) = await (sourcesResult, accountsResult, categoriesResult)
+        async let transactionsResult: [Transaction] = fetchTransactionsOrEmpty()
+        let (sources, accounts, categories, transactions) = await
+            (sourcesResult, accountsResult, categoriesResult, transactionsResult)
 
         self.incomeSources = sources
         self.accounts = accounts
         self.categories = categories
+        self.transactions = transactions
 
         flow = .authenticated(profile: profile)
 
@@ -221,6 +260,17 @@ final class AppState {
         } catch {
             #if DEBUG
             print("⚠️ Categories fetch failed (continuing as empty): \(error)")
+            #endif
+            return []
+        }
+    }
+
+    private func fetchTransactionsOrEmpty() async -> [Transaction] {
+        do {
+            return try await transactionService.fetchAll()
+        } catch {
+            #if DEBUG
+            print("⚠️ Transactions fetch failed (continuing as empty): \(error)")
             #endif
             return []
         }
