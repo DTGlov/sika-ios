@@ -49,9 +49,9 @@ struct SikaTextField: View {
         HStack(spacing: SikaTheme.Spacing.sm) {
             Group {
                 if kind == .password && !isPasswordRevealed {
-                    SecureField(placeholder ?? "", text: $text)
+                    SecureField("", text: $text, prompt: prompt)
                 } else {
-                    TextField(placeholder ?? "", text: $text)
+                    TextField("", text: $text, prompt: prompt)
                 }
             }
             .font(SikaTheme.Typography.sans(15))
@@ -117,5 +117,11 @@ struct SikaTextField: View {
         case .email, .name, .text: return .next
         case .password: return .go
         }
+    }
+
+    private var prompt: Text? {
+        guard let placeholder, !placeholder.isEmpty else { return nil }
+        return Text(placeholder)
+            .foregroundColor(SikaTheme.Color.placeholderText)
     }
 }
