@@ -5,6 +5,7 @@ enum SikaTextFieldKind {
     case password
     case name
     case text
+    case decimal
 }
 
 struct SikaTextField: View {
@@ -83,7 +84,7 @@ struct SikaTextField: View {
 
     private var autocapitalization: TextInputAutocapitalization {
         switch kind {
-        case .email, .password: return .never
+        case .email, .password, .decimal: return .never
         case .name: return .words
         case .text: return .sentences
         }
@@ -91,7 +92,7 @@ struct SikaTextField: View {
 
     private var disableAutocorrection: Bool {
         switch kind {
-        case .email, .password: return true
+        case .email, .password, .decimal: return true
         case .name, .text: return false
         }
     }
@@ -99,6 +100,7 @@ struct SikaTextField: View {
     private var keyboardType: UIKeyboardType {
         switch kind {
         case .email: return .emailAddress
+        case .decimal: return .decimalPad
         case .password, .name, .text: return .default
         }
     }
@@ -108,13 +110,13 @@ struct SikaTextField: View {
         case .email: return .emailAddress
         case .password: return .password
         case .name: return .name
-        case .text: return nil
+        case .text, .decimal: return nil
         }
     }
 
     private var submitLabel: SubmitLabel {
         switch kind {
-        case .email, .name, .text: return .next
+        case .email, .name, .text, .decimal: return .next
         case .password: return .go
         }
     }

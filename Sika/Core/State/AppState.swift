@@ -18,14 +18,41 @@ final class AppState {
     private(set) var session: Session?
     private(set) var isPerformingAuthAction: Bool = false
     private(set) var lastAuthError: String?
+    private(set) var incomeSources: [IncomeSource] = []
+    private(set) var onboardingDismissedThisSession: Bool = false
 
     private let authService: AuthService
     private let profileService: ProfileService
+    private let incomeService: IncomeService
     private var authObserverTask: Task<Void, Never>?
 
-    init(authService: AuthService = AuthService(), profileService: ProfileService = ProfileService()) {
+    init(
+        authService: AuthService = AuthService(),
+        profileService: ProfileService = ProfileService(),
+        incomeService: IncomeService = IncomeService()
+    ) {
         self.authService = authService
         self.profileService = profileService
+        self.incomeService = incomeService
+    }
+
+    var shouldShowOnboarding: Bool {
+        guard case .authenticated(let profile) = flow else { return false }
+        if onboardingDismissedThisSession { return false }
+        let hasIncome = (profile.monthlyIncome ?? 0) > 0
+        return !hasIncome && incomeSources.isEmpty
+    }
+
+    func dismissOnboardingForSession() {
+        onboardingDismissedThisSession = true
+    }
+
+    func completeOnboarding(updatedProfile: Profile, sources: [IncomeSource]) {
+        self.incomeSources = sources
+        if case .authenticated = self.flow {
+            self.flow = .authenticated(profile: updatedProfile)
+        }
+        self.onboardingDismissedThisSession = false
     }
 
     func bootstrap() async {
@@ -124,24 +151,37 @@ final class AppState {
     }
 
     private func loadProfile() async {
+        let profile: Profile
         do {
-            let profile = try await profileService.fetchCurrentProfile()
-            flow = .authenticated(profile: profile)
-
-            if let session = self.session {
-                AnalyticsService.shared.identify(
-                    userId: session.user.id.uuidString,
-                    name: profile.fullName,
-                    email: session.user.email
-                )
-
-                Task { AnalyticsService.shared.reconcileSessionReplay() }
-            }
+            profile = try await profileService.fetchCurrentProfile()
         } catch {
             lastAuthError = "Couldn't load your profile. Please sign in again."
             try? await authService.signOut()
             session = nil
             flow = .signIn
+            return
+        }
+
+        // Income sources fetch is non-blocking — RLS errors / empty rows
+        // shouldn't bounce the user out of auth.
+        do {
+            self.incomeSources = try await incomeService.fetchAll()
+        } catch {
+            #if DEBUG
+            print("⚠️ Income sources fetch failed (continuing as empty): \(error)")
+            #endif
+            self.incomeSources = []
+        }
+
+        flow = .authenticated(profile: profile)
+
+        if let session = self.session {
+            AnalyticsService.shared.identify(
+                userId: session.user.id.uuidString,
+                name: profile.fullName,
+                email: session.user.email
+            )
+            Task { AnalyticsService.shared.reconcileSessionReplay() }
         }
     }
 }

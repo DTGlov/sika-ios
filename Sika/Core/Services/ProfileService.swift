@@ -1,6 +1,18 @@
 import Foundation
 import Supabase
 
+private struct ProfileOnboardingUpdate: Encodable {
+    let monthlyIncome: Decimal
+    let currency: String
+    let updatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case monthlyIncome = "monthly_income"
+        case currency
+        case updatedAt = "updated_at"
+    }
+}
+
 enum ProfileServiceError: LocalizedError {
     case notSignedIn
     case profileMissing
@@ -39,6 +51,27 @@ struct ProfileService {
             #endif
             throw error
         }
+    }
+
+    /// Update profile after onboarding completes. Sets monthly_income + currency
+    /// and bumps updated_at. Returns the refreshed profile.
+    func updateAfterOnboarding(monthlyIncome: Decimal, currency: String) async throws -> Profile {
+        guard let userId = client.auth.currentUser?.id else {
+            throw ProfileServiceError.notSignedIn
+        }
+        let payload = ProfileOnboardingUpdate(
+            monthlyIncome: monthlyIncome,
+            currency: currency,
+            updatedAt: ISO8601DateFormatter().string(from: Date())
+        )
+        let response: PostgrestResponse<Profile> = try await client
+            .from("profiles")
+            .update(payload)
+            .eq("id", value: userId)
+            .select()
+            .single()
+            .execute()
+        return response.value
     }
 
     #if DEBUG
