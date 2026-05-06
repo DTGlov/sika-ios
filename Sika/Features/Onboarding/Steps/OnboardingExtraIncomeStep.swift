@@ -30,11 +30,9 @@ struct OnboardingExtraIncomeStep: View {
                     .foregroundStyle(SikaTheme.Color.mutedForeground)
             }
 
-            LazyVGrid(columns: columns, spacing: SikaTheme.Spacing.sm) {
-                ForEach(OnboardingViewModel.extraTemplates) { template in
-                    templateCell(for: template)
-                }
-            }
+            templateGridOrEdit
+                .animation(.spring(response: 0.35, dampingFraction: 0.85),
+                           value: viewModel.activeExtraTemplateKey)
 
             if !viewModel.extraSources.isEmpty {
                 VStack(alignment: .leading, spacing: SikaTheme.Spacing.xs) {
@@ -56,43 +54,28 @@ struct OnboardingExtraIncomeStep: View {
     }
 
     @ViewBuilder
-    private func templateCell(for template: OnboardingViewModel.ExtraTemplate) -> some View {
-        let isAdded = viewModel.extraSources.contains { $0.templateKey == template.id }
-        let isActive = viewModel.activeExtraTemplateKey == template.id
-
-        VStack(alignment: .leading, spacing: SikaTheme.Spacing.xs) {
-            SikaChip(
-                title: template.name,
-                subtitle: template.frequency.compactName,
-                isSelected: isAdded || isActive,
-                isDisabled: isAdded,
-                trailingIcon: isAdded ? "checkmark" : nil
-            ) {
-                viewModel.tapExtraTemplate(template)
-            }
-
-            if isActive {
-                SikaTextField(
-                    label: "Amount",
-                    text: $viewModel.extraInputAmount,
-                    kind: .decimal,
-                    placeholder: "0.00"
-                )
-                HStack(spacing: SikaTheme.Spacing.xs) {
-                    Button("Cancel") { viewModel.cancelExtraInput() }
-                        .font(SikaTheme.Typography.sans(13, weight: .semibold))
-                        .foregroundStyle(SikaTheme.Color.mutedForeground)
-                        .frame(maxWidth: .infinity, minHeight: 36)
-                        .background(SikaTheme.Color.muted)
-                        .clipShape(RoundedRectangle(cornerRadius: SikaTheme.Radius.md))
-                    Button("Add") { viewModel.confirmExtraAmount(template) }
-                        .font(SikaTheme.Typography.sans(13, weight: .semibold))
-                        .foregroundStyle(SikaTheme.Color.primaryForeground)
-                        .frame(maxWidth: .infinity, minHeight: 36)
-                        .background(SikaTheme.Color.primary)
-                        .clipShape(RoundedRectangle(cornerRadius: SikaTheme.Radius.md))
+    private var templateGridOrEdit: some View {
+        if let activeKey = viewModel.activeExtraTemplateKey,
+           let activeTemplate = OnboardingViewModel.extraTemplates.first(where: { $0.id == activeKey }) {
+            ExtraIncomeEditCard(
+                template: activeTemplate,
+                amountInput: $viewModel.extraInputAmount,
+                currencyCode: viewModel.selectedCurrencyCode,
+                onConfirm: { viewModel.confirmExtraAmount(activeTemplate) },
+                onCancel: { viewModel.cancelExtraInput() }
+            )
+            .transition(.scale(scale: 0.96).combined(with: .opacity))
+        } else {
+            LazyVGrid(columns: columns, spacing: SikaTheme.Spacing.sm) {
+                ForEach(OnboardingViewModel.extraTemplates) { template in
+                    ExtraTemplateChip(
+                        template: template,
+                        isAdded: viewModel.extraSources.contains { $0.templateKey == template.id },
+                        onTap: { viewModel.tapExtraTemplate(template) }
+                    )
                 }
             }
+            .transition(.scale(scale: 0.98).combined(with: .opacity))
         }
     }
 
@@ -124,5 +107,127 @@ struct OnboardingExtraIncomeStep: View {
                 .stroke(SikaTheme.Color.border, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: SikaTheme.Radius.md))
+    }
+}
+
+private struct ExtraTemplateChip: View {
+    let template: OnboardingViewModel.ExtraTemplate
+    let isAdded: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: SikaTheme.Spacing.xs) {
+                HStack {
+                    Text(template.name)
+                        .font(SikaTheme.Typography.sans(13, weight: .semibold))
+                        .foregroundStyle(SikaTheme.Color.foreground)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Spacer(minLength: 0)
+                    if isAdded {
+                        Image(systemName: "checkmark")
+                            .foregroundStyle(SikaTheme.Color.sikaAccent)
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                }
+                Text(template.frequency.displayName)
+                    .font(SikaTheme.Typography.sans(12))
+                    .foregroundStyle(SikaTheme.Color.mutedForeground)
+            }
+            .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+            .padding(SikaTheme.Spacing.md)
+            .background(isAdded ? SikaTheme.Color.bucketNeeds.opacity(0.1) : SikaTheme.Color.muted)
+            .overlay(
+                RoundedRectangle(cornerRadius: SikaTheme.Radius.lg)
+                    .stroke(isAdded ? SikaTheme.Color.bucketNeeds : SikaTheme.Color.border, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: SikaTheme.Radius.lg))
+        }
+        .buttonStyle(.plain)
+        .disabled(isAdded)
+    }
+}
+
+private struct ExtraIncomeEditCard: View {
+    let template: OnboardingViewModel.ExtraTemplate
+    @Binding var amountInput: String
+    let currencyCode: String
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    @FocusState private var amountFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SikaTheme.Spacing.md) {
+            VStack(alignment: .leading, spacing: SikaTheme.Spacing.xs) {
+                Text(template.name)
+                    .font(SikaTheme.Typography.sans(16, weight: .semibold))
+                    .foregroundStyle(SikaTheme.Color.foreground)
+                Text(template.frequency.displayName)
+                    .font(SikaTheme.Typography.sans(12))
+                    .foregroundStyle(SikaTheme.Color.mutedForeground)
+            }
+
+            VStack(alignment: .leading, spacing: SikaTheme.Spacing.xs) {
+                Text("Amount (\(CurrencyFormatter.symbol(forCode: currencyCode)))")
+                    .font(SikaTheme.Typography.sans(13, weight: .semibold))
+                    .foregroundStyle(SikaTheme.Color.foreground)
+
+                HStack {
+                    TextField(
+                        "",
+                        text: $amountInput,
+                        prompt: Text("0.00").foregroundColor(SikaTheme.Color.placeholderText)
+                    )
+                    .font(SikaTheme.Typography.mono(15))
+                    .foregroundStyle(SikaTheme.Color.foreground)
+                    .keyboardType(.decimalPad)
+                    .focused($amountFocused)
+                    .submitLabel(.done)
+                    .onSubmit { onConfirm() }
+                }
+                .padding(.horizontal, SikaTheme.Spacing.md)
+                .frame(height: 48)
+                .background(SikaTheme.Color.card)
+                .overlay(
+                    RoundedRectangle(cornerRadius: SikaTheme.Radius.lg)
+                        .stroke(amountFocused ? SikaTheme.Color.sikaAccent : SikaTheme.Color.border,
+                                lineWidth: amountFocused ? 2 : 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: SikaTheme.Radius.lg))
+            }
+
+            HStack(spacing: SikaTheme.Spacing.md) {
+                Button("Cancel", action: onCancel)
+                    .font(SikaTheme.Typography.sans(15, weight: .semibold))
+                    .foregroundStyle(SikaTheme.Color.mutedForeground)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(SikaTheme.Color.muted)
+                    .clipShape(RoundedRectangle(cornerRadius: SikaTheme.Radius.lg))
+
+                Button("Add", action: onConfirm)
+                    .font(SikaTheme.Typography.sans(15, weight: .semibold))
+                    .foregroundStyle(SikaTheme.Color.primaryForeground)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(canConfirm ? SikaTheme.Color.sikaAccent : SikaTheme.Color.muted)
+                    .clipShape(RoundedRectangle(cornerRadius: SikaTheme.Radius.lg))
+                    .disabled(!canConfirm)
+                    .opacity(canConfirm ? 1.0 : 0.6)
+            }
+        }
+        .padding(SikaTheme.Spacing.lg)
+        .background(SikaTheme.Color.card)
+        .overlay(
+            RoundedRectangle(cornerRadius: SikaTheme.Radius.xl)
+                .stroke(SikaTheme.Color.bucketNeeds, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: SikaTheme.Radius.xl))
+        .onAppear { amountFocused = true }
+    }
+
+    private var canConfirm: Bool {
+        guard let value = Decimal(string: amountInput.trimmingCharacters(in: .whitespaces)) else { return false }
+        return value > 0
     }
 }

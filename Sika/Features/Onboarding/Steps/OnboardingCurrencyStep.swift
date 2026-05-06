@@ -37,11 +37,16 @@ struct OnboardingCurrencyStep: View {
                 placeholder: "Search by code or name"
             )
 
-            VStack(spacing: SikaTheme.Spacing.xs) {
-                ForEach(currencies) { currency in
-                    currencyRow(currency)
+            ScrollView {
+                LazyVStack(spacing: SikaTheme.Spacing.xs) {
+                    ForEach(currencies) { currency in
+                        currencyRow(currency)
+                    }
                 }
+                .padding(.vertical, SikaTheme.Spacing.xs)
             }
+            .frame(maxHeight: .infinity)
+            .scrollIndicators(.visible)
 
             VStack(spacing: SikaTheme.Spacing.sm) {
                 SikaPrimaryButton(title: "Add my income") {
@@ -53,6 +58,8 @@ struct OnboardingCurrencyStep: View {
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
         }
+        .padding(.horizontal, SikaTheme.Spacing.lg)
+        .padding(.vertical, SikaTheme.Spacing.lg)
     }
 
     @ViewBuilder
