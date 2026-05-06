@@ -16,6 +16,14 @@ struct SikaApp: App {
         print("📝 Registered Geist families: \(geistFonts)")
         #endif
 
+        AnalyticsService.shared.bootstrap()
+
+        let firstLaunch = !UserDefaults.standard.bool(forKey: "sika.has_launched_before")
+        if firstLaunch {
+            UserDefaults.standard.set(true, forKey: "sika.has_launched_before")
+        }
+        AnalyticsService.shared.capture(.appLaunched(firstLaunch: firstLaunch))
+
         let appState = AppState()
         let toastManager = ToastManager()
         self._appState = State(initialValue: appState)

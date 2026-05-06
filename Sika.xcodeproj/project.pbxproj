@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		D1A0CFG10FF1CE0000000010 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = D1A0CFG10FF1CE0000000012 /* Supabase */; };
+		D1A0CFG10FF1CE0000000030 /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = D1A0CFG10FF1CE0000000032 /* PostHog */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -73,6 +74,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D1A0CFG10FF1CE0000000010 /* Supabase in Frameworks */,
+				D1A0CFG10FF1CE0000000030 /* PostHog in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -136,6 +138,7 @@
 			name = Sika;
 			packageProductDependencies = (
 				D1A0CFG10FF1CE0000000012 /* Supabase */,
+				D1A0CFG10FF1CE0000000032 /* PostHog */,
 			);
 			productName = Sika;
 			productReference = 6375DF642FAA7443008470C1 /* Sika.app */;
@@ -221,6 +224,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				D1A0CFG10FF1CE0000000011 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				D1A0CFG10FF1CE0000000031 /* XCRemoteSwiftPackageReference "posthog-ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 6375DF652FAA7443008470C1 /* Products */;
@@ -611,6 +615,14 @@
 				minimumVersion = 2.0.0;
 			};
 		};
+		D1A0CFG10FF1CE0000000031 /* XCRemoteSwiftPackageReference "posthog-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/PostHog/posthog-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -618,6 +630,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = D1A0CFG10FF1CE0000000011 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Supabase;
+		};
+		D1A0CFG10FF1CE0000000032 /* PostHog */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D1A0CFG10FF1CE0000000031 /* XCRemoteSwiftPackageReference "posthog-ios" */;
+			productName = PostHog;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
