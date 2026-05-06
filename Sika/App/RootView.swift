@@ -16,10 +16,24 @@ struct RootView: View {
                 LoadingScreen()
             case .authenticated(let profile):
                 AuthenticatedHomeView(profile: profile)
+                    .sheet(isPresented: shouldPresentOnboardingBinding) {
+                        OnboardingSheet()
+                    }
             }
         }
         .background(SikaTheme.Color.background)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: appState.flow)
+    }
+
+    private var shouldPresentOnboardingBinding: Binding<Bool> {
+        Binding(
+            get: { appState.shouldShowOnboarding },
+            set: { newValue in
+                if newValue == false {
+                    appState.dismissOnboardingForSession()
+                }
+            }
+        )
     }
 }
 
