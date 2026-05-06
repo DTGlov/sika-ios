@@ -109,9 +109,27 @@ enum SikaTheme {
             return Font.custom(postScriptName, size: size)
         }
 
-        static func mono(_ size: CGFloat) -> Font {
-            return Font.custom("GeistMono-Regular", size: size)
+        static func mono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+            let postScriptName: String
+            switch weight {
+            case .bold: postScriptName = "GeistMono-Bold"
+            default: postScriptName = "GeistMono-Regular"
+            }
+            return Font.custom(postScriptName, size: size)
         }
+
+        /// Display-sized digit for amount fields (large monospace bold).
+        /// Tabular figures so layout doesn't shift as digit count changes.
+        static func displayDigit(_ size: CGFloat = 56) -> Font {
+            Font.custom("GeistMono-Bold", size: size)
+        }
+    }
+
+    /// Character constants used by views. Grouped here so they're easy to grep
+    /// and to swap if we ever need to internationalize.
+    enum Symbols {
+        /// The Ghanaian Cedi sign (U+20B5).
+        static let cediSign = "₵"
     }
 }
 

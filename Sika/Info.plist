@@ -34,6 +34,7 @@
 		<string>Geist-SemiBold.otf</string>
 		<string>Geist-Bold.otf</string>
 		<string>GeistMono-Regular.otf</string>
+		<string>GeistMono-Bold.otf</string>
 	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
