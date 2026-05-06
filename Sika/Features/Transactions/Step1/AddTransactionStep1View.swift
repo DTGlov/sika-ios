@@ -1,3 +1,19 @@
+//
+//  AddTransactionStep1View.swift
+//  Sika
+//
+//  Step 1 of the Add Transaction wizard: "How much?"
+//
+//  ⚠️ INTEGRATION CONTRACT (1B-2e):
+//  The `accounts` parameter MUST be fed from appState.accounts.
+//  Do NOT hardcode account data when integrating into the wizard.
+//  Mock data exists ONLY in the SwiftUI preview blocks below.
+//
+//  The cedi sign (₵, U+20B5) display, the type-conditional layout
+//  (transfer hides accounts/reconcile), and the teal selection palette
+//  for accounts are locked design decisions matching web mobile parity.
+//
+
 import SwiftUI
 
 /// Add Transaction — Step 1: "How much?"
@@ -55,8 +71,11 @@ struct AddTransactionStep1View: View {
             )
         }
         .padding(.horizontal, SikaTheme.Spacing.lg)
-        .padding(.vertical, SikaTheme.Spacing.lg)
+        .padding(.top, SikaTheme.Spacing.lg)
+        .padding(.bottom, SikaTheme.Spacing.lg)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(SikaTheme.Color.background)
+        .ignoresSafeArea(.keyboard)
         .overlay(alignment: .top) {
             if showReconcileToast {
                 Text("Reconcile coming soon")
@@ -112,24 +131,34 @@ private struct NextButton: View {
 // MARK: - Preview
 
 #Preview("Step 1 — empty") {
-    AddTransactionStep1View(accounts: [
-        previewAccount(name: "Bank", type: .general),
-        previewAccount(name: "Hubtel wallet", type: .wallet),
-        previewAccount(name: "MTN MoMo Wallet", type: .other),
-        previewAccount(name: "Savings", type: .savings),
-        previewAccount(name: "Telecel Cash", type: .other),
-        previewAccount(name: "Physical Cash", type: .cash)
-    ])
+    AddTransactionStep1View(accounts: previewMockAccounts())
 }
 
 #Preview("Step 1 — transfer mode") {
     AddTransactionStep1View(accounts: [
-        previewAccount(name: "Bank", type: .general),
-        previewAccount(name: "Savings", type: .savings),
+        previewMockAccount(name: "Bank", type: .general),
+        previewMockAccount(name: "Savings", type: .savings),
     ])
 }
 
-private func previewAccount(name: String, type: AccountType) -> Account {
+// MARK: - PREVIEW-ONLY MOCK DATA
+// ⚠️ These mocks are ONLY for SwiftUI previews. When this view is integrated into
+// the wizard in 1B-2e, accounts MUST come from appState.accounts — never hardcoded.
+// The names below match Dave's real accounts coincidentally for visual fidelity in
+// the preview, but they're still mock UUIDs and will not match production data.
+
+private func previewMockAccounts() -> [Account] {
+    [
+        previewMockAccount(name: "Bank", type: .general),
+        previewMockAccount(name: "Hubtel wallet", type: .wallet),
+        previewMockAccount(name: "MTN MoMo Wallet", type: .other),
+        previewMockAccount(name: "Savings", type: .savings),
+        previewMockAccount(name: "Telecel Cash", type: .other),
+        previewMockAccount(name: "Physical Cash", type: .cash)
+    ]
+}
+
+private func previewMockAccount(name: String, type: AccountType) -> Account {
     Account(
         id: UUID(),
         userId: UUID(),
