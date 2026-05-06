@@ -92,6 +92,7 @@ final class AppState {
         defer { isPerformingAuthAction = false }
         do {
             let result = try await authService.signUp(email: email, password: password, fullName: fullName)
+            AnalyticsService.shared.capture(.signedUp)
             switch result {
             case .sessionCreated(let session):
                 self.session = session
@@ -115,6 +116,7 @@ final class AppState {
         }
         session = nil
         flow = .signIn
+        AnalyticsService.shared.reset()
     }
 
     func resendVerificationEmail(email: String) async throws {
@@ -125,6 +127,16 @@ final class AppState {
         do {
             let profile = try await profileService.fetchCurrentProfile()
             flow = .authenticated(profile: profile)
+
+            if let session = self.session {
+                AnalyticsService.shared.identify(
+                    userId: session.user.id.uuidString,
+                    name: profile.fullName,
+                    email: session.user.email
+                )
+
+                Task { AnalyticsService.shared.reconcileSessionReplay() }
+            }
         } catch {
             lastAuthError = "Couldn't load your profile. Please sign in again."
             try? await authService.signOut()
