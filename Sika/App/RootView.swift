@@ -15,7 +15,7 @@ struct RootView: View {
             case .authenticatingProfile:
                 LoadingScreen()
             case .authenticated(let profile):
-                AuthenticatedHomeView(profile: profile)
+                AuthenticatedRootView(profile: profile)
                     .sheet(isPresented: shouldPresentOnboardingBinding) {
                         OnboardingSheet()
                     }

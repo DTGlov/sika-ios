@@ -19,21 +19,29 @@ final class AppState {
     private(set) var isPerformingAuthAction: Bool = false
     private(set) var lastAuthError: String?
     private(set) var incomeSources: [IncomeSource] = []
+    private(set) var accounts: [Account] = []
+    private(set) var categories: [TransactionCategory] = []
     private(set) var onboardingDismissedThisSession: Bool = false
 
     private let authService: AuthService
     private let profileService: ProfileService
     private let incomeService: IncomeService
+    private let accountService: AccountService
+    private let categoryService: CategoryService
     private var authObserverTask: Task<Void, Never>?
 
     init(
         authService: AuthService = AuthService(),
         profileService: ProfileService = ProfileService(),
-        incomeService: IncomeService = IncomeService()
+        incomeService: IncomeService = IncomeService(),
+        accountService: AccountService = AccountService(),
+        categoryService: CategoryService = CategoryService()
     ) {
         self.authService = authService
         self.profileService = profileService
         self.incomeService = incomeService
+        self.accountService = accountService
+        self.categoryService = categoryService
     }
 
     var shouldShowOnboarding: Bool {
@@ -162,16 +170,16 @@ final class AppState {
             return
         }
 
-        // Income sources fetch is non-blocking — RLS errors / empty rows
-        // shouldn't bounce the user out of auth.
-        do {
-            self.incomeSources = try await incomeService.fetchAll()
-        } catch {
-            #if DEBUG
-            print("⚠️ Income sources fetch failed (continuing as empty): \(error)")
-            #endif
-            self.incomeSources = []
-        }
+        // Income/accounts/categories run in parallel and are non-blocking —
+        // RLS errors / empty rows shouldn't bounce the user out of auth.
+        async let sourcesResult: [IncomeSource] = fetchIncomeSourcesOrEmpty()
+        async let accountsResult: [Account] = fetchAccountsOrEmpty()
+        async let categoriesResult: [TransactionCategory] = fetchCategoriesOrEmpty()
+        let (sources, accounts, categories) = await (sourcesResult, accountsResult, categoriesResult)
+
+        self.incomeSources = sources
+        self.accounts = accounts
+        self.categories = categories
 
         flow = .authenticated(profile: profile)
 
@@ -182,6 +190,39 @@ final class AppState {
                 email: session.user.email
             )
             Task { AnalyticsService.shared.reconcileSessionReplay() }
+        }
+    }
+
+    private func fetchIncomeSourcesOrEmpty() async -> [IncomeSource] {
+        do {
+            return try await incomeService.fetchAll()
+        } catch {
+            #if DEBUG
+            print("⚠️ Income sources fetch failed (continuing as empty): \(error)")
+            #endif
+            return []
+        }
+    }
+
+    private func fetchAccountsOrEmpty() async -> [Account] {
+        do {
+            return try await accountService.fetchAll()
+        } catch {
+            #if DEBUG
+            print("⚠️ Accounts fetch failed (continuing as empty): \(error)")
+            #endif
+            return []
+        }
+    }
+
+    private func fetchCategoriesOrEmpty() async -> [TransactionCategory] {
+        do {
+            return try await categoryService.fetchAll()
+        } catch {
+            #if DEBUG
+            print("⚠️ Categories fetch failed (continuing as empty): \(error)")
+            #endif
+            return []
         }
     }
 }
