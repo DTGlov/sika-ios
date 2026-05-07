@@ -1,4 +1,5 @@
 import SwiftUI
+import Supabase
 
 /// Multi-step wizard for Add Transaction. Owns shared state across steps.
 /// Replaces the AddTransactionSheet placeholder that the FAB previously opened.
@@ -6,9 +7,15 @@ struct AddTransactionWizardView: View {
     let accounts: [Account]
     let categories: [TransactionCategory]
 
-    @State private var viewModel = AddTransactionWizardViewModel()
+    @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
-    @State private var showStep2NextToast = false
+
+    @State private var viewModel = AddTransactionWizardViewModel()
+    @State private var showSavedToast = false
+    @State private var showSaveErrorToast = false
+    @State private var saveErrorMessage = ""
+
+    private let transactionService = TransactionService()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -32,7 +39,7 @@ struct AddTransactionWizardView: View {
                         }
                     }
                 case .anyDetails:
-                    Step3PlaceholderContent()
+                    Step3DetailsView(viewModel: viewModel)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -47,41 +54,82 @@ struct AddTransactionWizardView: View {
             WizardBottomBar(
                 viewModel: viewModel,
                 accounts: accounts,
-                onClose: { dismiss() },
-                onStep2NextDisabled: { showStep2NextToast = true }
+                onSave: { Task { await performSave() } }
             )
             .padding(.horizontal, SikaTheme.Spacing.lg)
             .padding(.vertical, SikaTheme.Spacing.md)
             .background(SikaTheme.Color.background)
         }
-        .overlay(alignment: .top) {
-            if showStep2NextToast {
-                Text("Step 3 coming soon")
-                    .font(SikaTheme.Typography.sans(14, weight: .semibold))
-                    .foregroundStyle(SikaTheme.Color.foreground)
-                    .padding(.horizontal, SikaTheme.Spacing.md)
-                    .padding(.vertical, SikaTheme.Spacing.sm)
-                    .background(SikaTheme.Color.card)
-                    .clipShape(Capsule())
-                    .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
-                    .padding(.top, SikaTheme.Spacing.lg)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .task {
-                        try? await Task.sleep(for: .seconds(2))
-                        withAnimation { showStep2NextToast = false }
-                    }
-            }
+        .sikaToast(
+            isShown: $showSavedToast,
+            message: "Saved",
+            variant: .success,
+            duration: .milliseconds(1200)
+        )
+        .sikaToast(
+            isShown: $showSaveErrorToast,
+            message: saveErrorMessage,
+            variant: .error,
+            duration: .seconds(3)
+        )
+    }
+
+    // MARK: - Save flow
+
+    private func performSave() async {
+        guard let userId = appState.session?.user.id else {
+            saveErrorMessage = "Not signed in"
+            showSaveErrorToast = true
+            return
+        }
+
+        guard let prepared = viewModel.prepareDraftAndOptimistic(userId: userId) else {
+            saveErrorMessage = "Couldn't prepare transaction"
+            showSaveErrorToast = true
+            return
+        }
+
+        viewModel.submitState = .submitting
+
+        // Optimistic insert into AppState — UI updates immediately
+        appState.addOptimisticTransaction(prepared.optimistic)
+
+        do {
+            let saved = try await transactionService.insert(prepared.draft)
+            appState.replaceOptimisticTransaction(tempId: prepared.optimistic.id, with: saved)
+
+            // Analytics: convert domain TransactionType → AnalyticsEvent.TransactionType
+            let analyticsType: AnalyticsEvent.TransactionType = {
+                switch viewModel.selectedType {
+                case .expense: return .expense
+                case .income: return .income
+                case .transfer: return .transfer
+                }
+            }()
+            AnalyticsService.shared.capture(.transactionLogged(type: analyticsType, bucket: nil))
+
+            viewModel.submitState = .succeeded
+
+            showSavedToast = true
+            try? await Task.sleep(for: .milliseconds(800))
+            dismiss()
+        } catch {
+            appState.removeOptimisticTransaction(tempId: prepared.optimistic.id)
+            viewModel.submitState = .failed(error.localizedDescription)
+            saveErrorMessage = "Couldn't save: \(error.localizedDescription)"
+            showSaveErrorToast = true
+            #if DEBUG
+            print("⚠️ Add transaction save failed: \(error)")
+            #endif
         }
     }
 }
 
-/// Bottom action bar. Step 1 shows only Next; Step 2 and 3 show Back + Next.
-/// Step 2's Next is DISABLED in 1B-2b (Step 3 ships in 1B-2c).
+/// Bottom action bar. Step 1 shows only Next; Step 2 shows Back + Next; Step 3 shows Back + Save.
 private struct WizardBottomBar: View {
     @Bindable var viewModel: AddTransactionWizardViewModel
     let accounts: [Account]
-    let onClose: () -> Void
-    let onStep2NextDisabled: () -> Void
+    let onSave: () -> Void
 
     var body: some View {
         switch viewModel.currentStep {
@@ -94,16 +142,17 @@ private struct WizardBottomBar: View {
             HStack(spacing: SikaTheme.Spacing.md) {
                 WizardBackButton(action: { viewModel.goToPreviousStep() })
                 WizardNextButton(
-                    isEnabled: false,
-                    action: { onStep2NextDisabled() }
+                    isEnabled: viewModel.canAdvanceFromStep2(),
+                    action: { viewModel.goToNextStep() }
                 )
             }
         case .anyDetails:
             HStack(spacing: SikaTheme.Spacing.md) {
                 WizardBackButton(action: { viewModel.goToPreviousStep() })
-                WizardNextButton(
-                    isEnabled: false,
-                    action: { /* Save in 1B-2c */ }
+                SaveButton(
+                    isEnabled: viewModel.canSaveFromStep3(),
+                    isSubmitting: viewModel.submitState == .submitting,
+                    action: onSave
                 )
             }
         }
@@ -135,6 +184,7 @@ private struct WizardNextButton: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(!isEnabled)
     }
 }
 
@@ -157,24 +207,37 @@ private struct WizardBackButton: View {
     }
 }
 
-/// Temporary Step 3 placeholder until 1B-2c ships.
-private struct Step3PlaceholderContent: View {
+/// "Save" gold pill button. Shows ProgressView while submitting.
+private struct SaveButton: View {
+    let isEnabled: Bool
+    let isSubmitting: Bool
+    let action: () -> Void
+
     var body: some View {
-        VStack(spacing: SikaTheme.Spacing.lg) {
-            Spacer()
-            Image(systemName: "checkmark.seal")
-                .font(.system(size: 48))
-                .foregroundStyle(SikaTheme.Color.sikaAccent)
-            Text("Any details?")
-                .font(SikaTheme.Typography.sans(28, weight: .bold))
-                .foregroundStyle(SikaTheme.Color.foreground)
-            Text("Coming in 1B-2c")
-                .font(SikaTheme.Typography.sans(14))
-                .foregroundStyle(SikaTheme.Color.mutedForeground)
-            Spacer()
+        Button(action: action) {
+            ZStack {
+                if isSubmitting {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(SikaTheme.Color.primaryForeground)
+                } else {
+                    Text("Save")
+                        .font(SikaTheme.Typography.sans(16, weight: .semibold))
+                }
+            }
+            .foregroundStyle(isEnabled
+                ? SikaTheme.Color.primaryForeground
+                : SikaTheme.Color.mutedForeground)
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .background(
+                Capsule()
+                    .fill(isEnabled
+                        ? SikaTheme.Color.sikaAccent
+                        : SikaTheme.Color.muted)
+            )
         }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, SikaTheme.Spacing.lg)
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
     }
 }
 

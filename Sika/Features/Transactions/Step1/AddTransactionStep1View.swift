@@ -64,23 +64,6 @@ struct Step1Content: View {
             .scrollDismissesKeyboard(.interactively)
             .scrollIndicators(.hidden)
         }
-        .overlay(alignment: .top) {
-            if showReconcileToast {
-                Text("Reconcile coming soon")
-                    .font(SikaTheme.Typography.sans(14, weight: .semibold))
-                    .foregroundStyle(SikaTheme.Color.foreground)
-                    .padding(.horizontal, SikaTheme.Spacing.md)
-                    .padding(.vertical, SikaTheme.Spacing.sm)
-                    .background(SikaTheme.Color.card)
-                    .clipShape(Capsule())
-                    .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
-                    .padding(.top, SikaTheme.Spacing.lg)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .task {
-                        try? await Task.sleep(for: .seconds(2))
-                        withAnimation { showReconcileToast = false }
-                    }
-            }
-        }
+        .sikaToast(isShown: $showReconcileToast, message: "Reconcile coming soon")
     }
 }
