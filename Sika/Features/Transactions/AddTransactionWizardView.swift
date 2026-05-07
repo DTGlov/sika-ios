@@ -104,6 +104,7 @@ struct AddTransactionWizardView: View {
                 case .expense: return .expense
                 case .income: return .income
                 case .transfer: return .transfer
+                case .adjustment: return .adjustment
                 }
             }()
             AnalyticsService.shared.capture(.transactionLogged(type: analyticsType, bucket: nil))
