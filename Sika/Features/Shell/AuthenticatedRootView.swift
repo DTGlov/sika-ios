@@ -3,6 +3,7 @@ import SwiftUI
 struct AuthenticatedRootView: View {
     let profile: Profile
 
+    @Environment(AppState.self) private var appState
     @State private var selectedTab: MainTab = .home
     @State private var isAddTransactionPresented: Bool = false
 
@@ -37,7 +38,10 @@ struct AuthenticatedRootView: View {
             .padding(.bottom, 80)
         }
         .sheet(isPresented: $isAddTransactionPresented) {
-            AddTransactionSheet()
+            AddTransactionWizardView(
+                accounts: appState.accounts,
+                categories: appState.categories
+            )
         }
     }
 }

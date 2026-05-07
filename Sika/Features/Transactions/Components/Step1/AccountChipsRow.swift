@@ -1,23 +1,32 @@
 import SwiftUI
 
-/// Wrap row of account chips with section label.
-/// Selected chip has teal outline + teal text (bucketNeeds — "active resource").
-/// Unselected chips have cream-muted background, foreground text, no border.
+/// Wrap row of account chips with optional section label.
+/// Selected chip has tinted outline + tinted text (defaults to bucketNeeds teal,
+/// "active resource"). Unselected chips have cream-muted background, foreground
+/// text, no border.
 struct AccountChipsRow: View {
     let accounts: [Account]
     @Binding var selectedId: UUID?
+    /// Color used for the chip's outline + text when selected.
+    /// Defaults to bucketNeeds (teal) for Step 1; transfer's "To" picker uses sikaAccent (gold).
+    var selectionTint: Color = SikaTheme.Color.bucketNeeds
+    /// When false, the parent supplies its own section label ("From"/"To" in transfer).
+    var showLabel: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: SikaTheme.Spacing.sm) {
-            Text("Account")
-                .font(SikaTheme.Typography.sans(13))
-                .foregroundStyle(SikaTheme.Color.mutedForeground)
+            if showLabel {
+                Text("Account")
+                    .font(SikaTheme.Typography.sans(13))
+                    .foregroundStyle(SikaTheme.Color.mutedForeground)
+            }
 
             FlowLayout(spacing: SikaTheme.Spacing.sm) {
                 ForEach(accounts) { account in
                     AccountChip(
                         account: account,
                         isSelected: selectedId == account.id,
+                        selectionTint: selectionTint,
                         onTap: {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
                                 selectedId = account.id
@@ -33,6 +42,7 @@ struct AccountChipsRow: View {
 private struct AccountChip: View {
     let account: Account
     let isSelected: Bool
+    let selectionTint: Color
     let onTap: () -> Void
 
     var body: some View {
@@ -42,9 +52,7 @@ private struct AccountChip: View {
                     .font(.system(size: 14))
                 Text(account.name)
                     .font(SikaTheme.Typography.sans(14, weight: .semibold))
-                    .foregroundStyle(isSelected
-                        ? SikaTheme.Color.bucketNeeds
-                        : SikaTheme.Color.foreground)
+                    .foregroundStyle(isSelected ? selectionTint : SikaTheme.Color.foreground)
             }
             .padding(.horizontal, SikaTheme.Spacing.md)
             .padding(.vertical, SikaTheme.Spacing.sm)
@@ -54,7 +62,7 @@ private struct AccountChip: View {
                     .overlay(
                         Capsule()
                             .strokeBorder(
-                                isSelected ? SikaTheme.Color.bucketNeeds : Color.clear,
+                                isSelected ? selectionTint : Color.clear,
                                 lineWidth: 1.5
                             )
                     )
@@ -63,8 +71,6 @@ private struct AccountChip: View {
         .buttonStyle(.plain)
     }
 
-    /// Emoji for each account type. Fallback when accounts table doesn't have an
-    /// emoji/icon column (refine when account creation UI ships).
     private func emoji(for type: AccountType) -> String {
         switch type {
         case .general: return "🏦"
