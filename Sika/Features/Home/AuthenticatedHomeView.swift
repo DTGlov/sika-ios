@@ -84,6 +84,7 @@ struct AuthenticatedHomeView: View {
                         transactions: appState.transactions,
                         categories: appState.categories,
                         budgetBuckets: appState.budgetBuckets,
+                        accounts: appState.accounts,
                         cycle: appState.currentCycle,
                         monthlyIncome: appState.monthlyIncomeAmount,
                         needsPercent: profile.needsPercentValue,
@@ -97,6 +98,12 @@ struct AuthenticatedHomeView: View {
                     onTap: {
                         // Phase 2: no-op — /buckets detail route ships later.
                     }
+                )
+
+                WeeklyChart(
+                    transactions: appState.transactionsInDisplayedCycle,
+                    cycle: appState.currentCycle,
+                    currencyCode: appState.currencyCode
                 )
 
                 RecentTransactionsWidget(

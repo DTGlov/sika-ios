@@ -8,7 +8,14 @@ struct Transaction: Codable, Identifiable, Equatable, Hashable {
     let accountId: UUID
     let fromAccountId: UUID?
     let categoryId: UUID?
+    /// Set on TRANSFER rows that contribute TO a goal. The transfer's
+    /// amount is what increased the goal's saved balance.
     let goalId: UUID?
+    /// Set on EXPENSE rows that were paid FROM a goal's accumulated
+    /// savings. Used to exclude these expenses from cycleSpent and bucket
+    /// math (the cost was already accounted for by the original goal
+    /// contribution). Mirrors web's `paid_from_goal_id` column.
+    let paidFromGoalId: UUID?
     let transactionDate: String
     let note: String?
     /// DEPRECATED: transactions table has no is_active column. Optional so
@@ -28,6 +35,7 @@ struct Transaction: Codable, Identifiable, Equatable, Hashable {
         case fromAccountId = "from_account_id"
         case categoryId = "category_id"
         case goalId = "goal_id"
+        case paidFromGoalId = "paid_from_goal_id"
         case transactionDate = "transaction_date"
         case note
         case isActive = "is_active"

@@ -2,6 +2,11 @@ import Foundation
 
 enum AccountType: String, Codable, CaseIterable {
     case general, wallet, cash, savings, investment, other
+
+    /// Account types that count as "savings/investment" for bucket math.
+    /// Mirrors web's SAVINGS_ACCOUNT_TYPES = Set(['savings', 'investment']).
+    /// Used by BucketSpendCalculator's Rule 2 (inbound transfers).
+    static let savingsLike: Set<AccountType> = [.savings, .investment]
 }
 
 struct Account: Codable, Identifiable, Equatable, Hashable {
