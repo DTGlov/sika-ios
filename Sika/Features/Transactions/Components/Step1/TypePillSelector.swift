@@ -7,7 +7,7 @@ struct TypePillSelector: View {
 
     var body: some View {
         HStack(spacing: SikaTheme.Spacing.md) {
-            ForEach(TransactionType.allCases) { type in
+            ForEach(TransactionType.userCreatable) { type in
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
                         selected = type

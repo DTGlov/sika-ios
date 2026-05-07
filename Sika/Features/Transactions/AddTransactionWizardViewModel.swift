@@ -157,6 +157,10 @@ final class AddTransactionWizardViewModel {
             fromAccountId = from  // source
             categoryId = nil
             goalId = nil          // transfers never link to goals
+        case .adjustment:
+            // Not creatable from the wizard — only web's Reconcile flow
+            // produces adjustment rows. Bail defensively if reached.
+            return nil
         }
 
         let draft = TransactionDraft(
