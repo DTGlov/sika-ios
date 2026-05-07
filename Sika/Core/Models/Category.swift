@@ -2,6 +2,10 @@ import Foundation
 
 enum CategoryType: String, Codable {
     case expense, income
+    /// Reconciliation-only categories created by web's Reconcile flow.
+    /// Excluded from the Add-Transaction wizard's grid (which filters to
+    /// .expense or .income based on the selected type).
+    case adjustment
 }
 
 /// Named TransactionCategory to avoid collision with SwiftUI's `Category`

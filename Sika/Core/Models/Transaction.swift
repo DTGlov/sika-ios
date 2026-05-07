@@ -11,7 +11,9 @@ struct Transaction: Codable, Identifiable, Equatable, Hashable {
     let goalId: UUID?
     let transactionDate: String
     let note: String?
-    let isActive: Bool
+    /// DEPRECATED: transactions table has no is_active column. Optional so
+    /// decoding tolerates the missing key. Remove when no callsites set it.
+    let isActive: Bool?
     let softDeleted: Bool?
     let generatedFromRecurring: UUID?
     let createdAt: Date?
