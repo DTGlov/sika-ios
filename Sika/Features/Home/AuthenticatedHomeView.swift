@@ -13,6 +13,7 @@ struct AuthenticatedHomeView: View {
     let profile: Profile
 
     @Environment(AppState.self) private var appState
+    @State private var isSettingsPresented = false
 
     var body: some View {
         ScrollView {
@@ -20,7 +21,7 @@ struct AuthenticatedHomeView: View {
                 HomeTopBar(
                     firstName: profile.firstName,
                     onSettingsTap: {
-                        // Phase 1 no-op — wired when Settings tab ships.
+                        isSettingsPresented = true
                     }
                 )
 
@@ -76,6 +77,9 @@ struct AuthenticatedHomeView: View {
         .background(SikaTheme.Color.background)
         .refreshable {
             await appState.refreshHomeData()
+        }
+        .sheet(isPresented: $isSettingsPresented) {
+            SettingsView()
         }
     }
 
