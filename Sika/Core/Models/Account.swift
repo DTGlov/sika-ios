@@ -9,6 +9,9 @@ struct Account: Codable, Identifiable, Equatable, Hashable {
     let userId: UUID
     let name: String
     let accountType: AccountType
+    /// Lucide icon name OR emoji glyph; resolve via IconResolver.
+    /// Optional so decoding tolerates rows without an icon column.
+    let icon: String?
     let balance: Decimal?
     let isDefault: Bool?
     let archived: Bool?
@@ -20,6 +23,7 @@ struct Account: Codable, Identifiable, Equatable, Hashable {
         case userId = "user_id"
         case name
         case accountType = "account_type"
+        case icon
         case balance
         case isDefault = "is_default"
         case archived

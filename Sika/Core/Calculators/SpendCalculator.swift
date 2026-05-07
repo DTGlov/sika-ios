@@ -48,15 +48,15 @@ enum SpendCalculator {
     }
 
     /// Cycle-bounded spent total (expense transactions in cycle).
-    /// In Phase 1 we don't have the Goal domain on iOS, so the goal_id exclusion
-    /// is deferred. Phase 2 will add: `.filter { $0.goalId == nil }`.
+    /// Excludes paid-from-target transactions (goalId set) — those don't
+    /// count as net spend because the saving already accounted for them.
     static func cycleSpent(transactions: [Transaction], cycle: Cycle) -> Decimal {
         let start = dateString(cycle.start)
         let end = dateString(cycle.end)
         return transactions
             .filter { $0.type == .expense }
             .filter { $0.transactionDate >= start && $0.transactionDate <= end }
-            // .filter { $0.goalId == nil }  // Phase 2 when Goal model ships
+            .filter { $0.goalId == nil }
             .reduce(Decimal(0)) { $0 + $1.amount }
     }
 

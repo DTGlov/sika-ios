@@ -27,6 +27,8 @@ final class AppState {
     private(set) var categories: [TransactionCategory] = []
     private(set) var transactions: [Transaction] = []
     private(set) var pendingTransactions: [Transaction] = []
+    private(set) var goals: [Goal] = []
+    private(set) var budgetBuckets: [BudgetBucket] = []
     private(set) var onboardingDismissedThisSession: Bool = false
 
     /// Cycle navigation: 0 = current cycle, -1 = previous, +1 = next (disallowed
@@ -39,6 +41,8 @@ final class AppState {
     private let accountService: AccountService
     private let categoryService: CategoryService
     private let transactionService: TransactionService
+    private let goalService: GoalService
+    private let budgetBucketService: BudgetBucketService
     private var authObserverTask: Task<Void, Never>?
 
     init(
@@ -47,7 +51,9 @@ final class AppState {
         incomeService: IncomeService = IncomeService(),
         accountService: AccountService = AccountService(),
         categoryService: CategoryService = CategoryService(),
-        transactionService: TransactionService = TransactionService()
+        transactionService: TransactionService = TransactionService(),
+        goalService: GoalService = GoalService(),
+        budgetBucketService: BudgetBucketService = BudgetBucketService()
     ) {
         self.authService = authService
         self.profileService = profileService
@@ -55,6 +61,8 @@ final class AppState {
         self.accountService = accountService
         self.categoryService = categoryService
         self.transactionService = transactionService
+        self.goalService = goalService
+        self.budgetBucketService = budgetBucketService
     }
 
     /// Active currency code from the authenticated profile, or "GHS" as fallback.
@@ -120,9 +128,10 @@ final class AppState {
     }
 
     /// Re-fetch all Home data sources in parallel (income, accounts, categories,
-    /// transactions). Profile is intentionally NOT refetched here — it's stable
-    /// across a session and full refresh would risk bouncing the user out on
-    /// transient profile errors. Called by pull-to-refresh.
+    /// transactions, goals, budgetBuckets). Profile is intentionally NOT
+    /// refetched here — it's stable across a session and full refresh would
+    /// risk bouncing the user out on transient profile errors. Called by
+    /// pull-to-refresh.
     func refreshHomeData() async {
         guard case .authenticated = flow else { return }
 
@@ -130,13 +139,43 @@ final class AppState {
         async let accountsResult: [Account] = fetchAccountsOrEmpty()
         async let categoriesResult: [TransactionCategory] = fetchCategoriesOrEmpty()
         async let transactionsResult: [Transaction] = fetchTransactionsOrEmpty()
-        let (sources, accounts, categories, transactions) = await
-            (sourcesResult, accountsResult, categoriesResult, transactionsResult)
+        async let goalsResult: [Goal] = fetchGoalsOrEmpty()
+        async let bucketsResult: [BudgetBucket] = fetchBudgetBucketsOrEmpty()
+        let (sources, accounts, categories, transactions, goals, buckets) = await
+            (sourcesResult, accountsResult, categoriesResult, transactionsResult,
+             goalsResult, bucketsResult)
 
         self.incomeSources = sources
         self.accounts = accounts
         self.categories = categories
         self.transactions = transactions
+        self.goals = goals
+        self.budgetBuckets = buckets
+    }
+
+    /// Top 3 active goals by priority for GoalsWidget display.
+    var topGoals: [Goal] {
+        goals
+            .filter { $0.archived != true }
+            .sorted { ($0.priority ?? Int.max) < ($1.priority ?? Int.max) }
+            .prefix(3)
+            .map { $0 }
+    }
+
+    /// Transactions whose `transactionDate` (yyyy-MM-dd string) falls within
+    /// the currently-displayed cycle window. Lexicographic comparison is
+    /// safe for ISO date strings.
+    var transactionsInDisplayedCycle: [Transaction] {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        let cycle = currentCycle
+        let startStr = formatter.string(from: cycle.start)
+        let endStr = formatter.string(from: cycle.end)
+        return transactions.filter { tx in
+            tx.transactionDate >= startStr && tx.transactionDate <= endStr
+        }
     }
 
     // MARK: - Optimistic transaction inserts
@@ -286,19 +325,25 @@ final class AppState {
             return
         }
 
-        // Income/accounts/categories/transactions run in parallel and are non-blocking —
-        // RLS errors / empty rows shouldn't bounce the user out of auth.
+        // Income/accounts/categories/transactions/goals/buckets run in parallel
+        // and are non-blocking — RLS errors / empty rows shouldn't bounce the
+        // user out of auth.
         async let sourcesResult: [IncomeSource] = fetchIncomeSourcesOrEmpty()
         async let accountsResult: [Account] = fetchAccountsOrEmpty()
         async let categoriesResult: [TransactionCategory] = fetchCategoriesOrEmpty()
         async let transactionsResult: [Transaction] = fetchTransactionsOrEmpty()
-        let (sources, accounts, categories, transactions) = await
-            (sourcesResult, accountsResult, categoriesResult, transactionsResult)
+        async let goalsResult: [Goal] = fetchGoalsOrEmpty()
+        async let bucketsResult: [BudgetBucket] = fetchBudgetBucketsOrEmpty()
+        let (sources, accounts, categories, transactions, goals, buckets) = await
+            (sourcesResult, accountsResult, categoriesResult, transactionsResult,
+             goalsResult, bucketsResult)
 
         self.incomeSources = sources
         self.accounts = accounts
         self.categories = categories
         self.transactions = transactions
+        self.goals = goals
+        self.budgetBuckets = buckets
 
         flow = .authenticated(profile: profile)
 
@@ -351,6 +396,28 @@ final class AppState {
         } catch {
             #if DEBUG
             print("⚠️ Transactions fetch failed (continuing as empty): \(error)")
+            #endif
+            return []
+        }
+    }
+
+    private func fetchGoalsOrEmpty() async -> [Goal] {
+        do {
+            return try await goalService.fetchAll()
+        } catch {
+            #if DEBUG
+            print("⚠️ Goals fetch failed (continuing as empty): \(error)")
+            #endif
+            return []
+        }
+    }
+
+    private func fetchBudgetBucketsOrEmpty() async -> [BudgetBucket] {
+        do {
+            return try await budgetBucketService.fetchAll()
+        } catch {
+            #if DEBUG
+            print("⚠️ Budget buckets fetch failed (continuing as empty): \(error)")
             #endif
             return []
         }

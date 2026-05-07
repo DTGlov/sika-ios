@@ -16,6 +16,9 @@ struct TransactionCategory: Codable, Identifiable, Equatable, Hashable {
     let name: String
     let categoryType: CategoryType
     let bucketId: UUID?
+    /// Lucide icon name OR emoji glyph; resolve via IconResolver.
+    /// Optional so decoding tolerates rows without an icon column.
+    let icon: String?
     let archived: Bool?
     let isFavorite: Bool?
     let createdAt: Date?
@@ -27,6 +30,7 @@ struct TransactionCategory: Codable, Identifiable, Equatable, Hashable {
         case name
         case categoryType = "category_type"
         case bucketId = "bucket_id"
+        case icon
         case archived
         case isFavorite = "is_favorite"
         case createdAt = "created_at"

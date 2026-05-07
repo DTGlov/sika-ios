@@ -48,7 +48,7 @@ private struct AccountChip: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: SikaTheme.Spacing.xs) {
-                Text(emoji(for: account.accountType))
+                Text(emoji)
                     .font(.system(size: 14))
                 Text(account.name)
                     .font(SikaTheme.Typography.sans(14, weight: .semibold))
@@ -71,7 +71,15 @@ private struct AccountChip: View {
         .buttonStyle(.plain)
     }
 
-    private func emoji(for type: AccountType) -> String {
+    private var emoji: String {
+        if let resolved = IconResolver.resolveOrNil(account.icon) {
+            return resolved
+        }
+        // Fallback to account_type mapping when icon column is null/empty.
+        return Self.fallbackEmoji(for: account.accountType)
+    }
+
+    private static func fallbackEmoji(for type: AccountType) -> String {
         switch type {
         case .general: return "🏦"
         case .wallet: return "👛"
