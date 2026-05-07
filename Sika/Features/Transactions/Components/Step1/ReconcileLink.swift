@@ -8,7 +8,7 @@ struct ReconcileLink: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: SikaTheme.Spacing.xs) {
-                Image(systemName: "scalemass")
+                Image(systemName: "scale.3d")
                     .font(.system(size: 14))
                     .foregroundStyle(SikaTheme.Color.mutedForeground)
                 Text("Reconcile an account balance instead")
