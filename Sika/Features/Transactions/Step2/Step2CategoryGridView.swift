@@ -46,14 +46,18 @@ struct Step2CategoryGridView: View {
 }
 
 /// Individual category card. Cream-muted background; gold border + tint when selected.
-/// Web seeds emoji-prefixed names ("🍕 Eating Out"); we extract the prefix and display
-/// the emoji centered above the trimmed label.
+/// Icon comes from category.icon (Lucide name or emoji glyph) via IconResolver,
+/// falling back to legacy emoji-prefix-in-name extraction for older seeds.
 private struct CategoryCard: View {
     let category: TransactionCategory
     let isSelected: Bool
     let onTap: () -> Void
 
     private var emoji: String {
+        if let resolved = IconResolver.resolveOrNil(category.icon) {
+            return resolved
+        }
+        // Legacy fallback: name like "🍕 Eating Out" → "🍕"
         let trimmed = category.name.trimmingCharacters(in: .whitespaces)
         var collected = ""
         for char in trimmed {
@@ -63,10 +67,15 @@ private struct CategoryCard: View {
                 break
             }
         }
-        return collected.isEmpty ? "📋" : collected
+        return collected.isEmpty ? IconResolver.fallback : collected
     }
 
     private var displayLabel: String {
+        // When icon is in its own column, name is clean — no stripping needed.
+        if IconResolver.resolveOrNil(category.icon) != nil {
+            return category.name
+        }
+        // Legacy: strip the emoji prefix to mirror old display behavior.
         let trimmed = category.name.trimmingCharacters(in: .whitespaces)
         let withoutEmoji = trimmed.drop(while: { c in
             c.unicodeScalars.contains { $0.properties.isEmojiPresentation || $0.value > 0x2600 } || c.isWhitespace

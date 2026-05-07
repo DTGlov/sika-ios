@@ -269,7 +269,7 @@ private func previewAccounts() -> [Account] {
 private func previewAccount(name: String, type: AccountType) -> Account {
     Account(
         id: UUID(), userId: UUID(), name: name, accountType: type,
-        balance: 1000, isDefault: false, archived: false,
+        icon: nil, balance: 1000, isDefault: false, archived: false,
         createdAt: nil, updatedAt: nil
     )
 }
@@ -289,7 +289,7 @@ private func previewCategories() -> [TransactionCategory] {
 private func previewCategory(name: String, type: CategoryType) -> TransactionCategory {
     TransactionCategory(
         id: UUID(), userId: UUID(), name: name, categoryType: type,
-        bucketId: nil, archived: false, isFavorite: nil,
+        bucketId: nil, icon: nil, archived: false, isFavorite: nil,
         createdAt: nil, updatedAt: nil
     )
 }

@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// Phase 1 Home dashboard: top bar + cycle navigation + heritage CycleCard +
-/// stat line + SpendCard pair. Pull-to-refresh re-fetches all Home data.
+/// Home dashboard. Phase 2 adds GoalsWidget + BucketStrip + RecentTransactions
+/// to Phase 1's chassis (top bar, cycle nav, heritage card, stat line, spend pair).
+/// Pull-to-refresh re-fetches all Home data sources in parallel.
 ///
 /// Deferred to later phases:
-/// - Phase 2: Goals widget, Buckets strip, Recent transactions list
+/// - Phase 2.1: Goal progress derivation (current saved per goal)
 /// - Phase 3: Weekly chart (Apple Charts framework)
 /// - Phase 4: Tutorial cards / dismissible hints
 /// - Phase 5: Daily / Insight / Monthly banners
@@ -68,6 +69,43 @@ struct AuthenticatedHomeView: View {
                         previous: SpendCalculator.previousMonthSpent(transactions: appState.transactions)
                     ),
                     currencyCode: appState.currencyCode
+                )
+
+                GoalsWidget(
+                    goals: appState.topGoals,
+                    currencyCode: appState.currencyCode,
+                    onSeeAllTap: {
+                        // Phase 2: no-op — /goals detail route ships later.
+                    }
+                )
+
+                BucketStrip(
+                    rows: BucketSpendCalculator.compute(
+                        transactions: appState.transactions,
+                        categories: appState.categories,
+                        budgetBuckets: appState.budgetBuckets,
+                        cycle: appState.currentCycle,
+                        monthlyIncome: appState.monthlyIncomeAmount,
+                        needsPercent: profile.needsPercentValue,
+                        wantsPercent: profile.wantsPercentValue,
+                        savingsPercent: profile.savingsPercentValue
+                    ),
+                    needsPercent: profile.needsPercentValue,
+                    wantsPercent: profile.wantsPercentValue,
+                    savingsPercent: profile.savingsPercentValue,
+                    currencyCode: appState.currencyCode,
+                    onTap: {
+                        // Phase 2: no-op — /buckets detail route ships later.
+                    }
+                )
+
+                RecentTransactionsWidget(
+                    transactions: appState.transactionsInDisplayedCycle,
+                    categories: appState.categories,
+                    currencyCode: appState.currencyCode,
+                    onSeeAllTap: {
+                        // Phase 2: no-op — /transactions detail route ships later.
+                    }
                 )
 
                 Spacer().frame(height: SikaTheme.Spacing.xl2)
