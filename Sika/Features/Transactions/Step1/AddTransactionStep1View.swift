@@ -33,24 +33,28 @@ struct AddTransactionStep1View: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: SikaTheme.Spacing.lg) {
-            // PINNED TOP: heading + step indicator
-            Text("How much?")
-                .font(SikaTheme.Typography.sans(28, weight: .bold))
-                .foregroundStyle(SikaTheme.Color.foreground)
-                .padding(.horizontal, SikaTheme.Spacing.lg)
-                .padding(.top, SikaTheme.Spacing.lg)
+            // PINNED TOP REGION: heading + indicator + amount + type pills
+            VStack(alignment: .leading, spacing: SikaTheme.Spacing.lg) {
+                Text("How much?")
+                    .font(SikaTheme.Typography.sans(28, weight: .bold))
+                    .foregroundStyle(SikaTheme.Color.foreground)
 
-            StepIndicator3(currentStep: 1)
-                .padding(.horizontal, SikaTheme.Spacing.lg)
+                StepIndicator3(currentStep: 1)
 
-            // SCROLLABLE MIDDLE: amount + pills + numpad + (reconcile + accounts)
-            ScrollView {
+                // Amount + type pills as a centered unit
                 VStack(spacing: SikaTheme.Spacing.lg) {
-                    Spacer().frame(height: SikaTheme.Spacing.md)
-
                     AmountDisplay(amountString: viewModel.amountString)
                     TypePillSelector(selected: bindingForType)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, SikaTheme.Spacing.md)
+            }
+            .padding(.horizontal, SikaTheme.Spacing.lg)
+            .padding(.top, SikaTheme.Spacing.lg)
 
+            // SCROLLABLE MIDDLE: numpad + reconcile + accounts
+            ScrollView {
+                VStack(spacing: SikaTheme.Spacing.lg) {
                     NumberPad(
                         onDigitTap: { viewModel.appendDigit($0) },
                         onBackspaceTap: { viewModel.backspace() }
@@ -65,10 +69,12 @@ struct AddTransactionStep1View: View {
                         )
                     }
 
+                    // Bottom breathing room before Next button
                     Spacer().frame(height: SikaTheme.Spacing.lg)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, SikaTheme.Spacing.lg)
+                .padding(.top, SikaTheme.Spacing.md)
                 .animation(.spring(response: 0.4, dampingFraction: 0.85),
                            value: viewModel.showsAccountsAndReconcile)
             }
