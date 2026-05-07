@@ -78,6 +78,11 @@ struct AuthenticatedHomeView: View {
         .refreshable {
             await appState.refreshHomeData()
         }
+        .onAppear {
+            #if DEBUG
+            appState.debugPrintHomeData()
+            #endif
+        }
         .sheet(isPresented: $isSettingsPresented) {
             SettingsView()
         }

@@ -355,4 +355,70 @@ final class AppState {
             return []
         }
     }
+
+    #if DEBUG
+    /// Prints diagnostic info about transactions and cycle math.
+    /// Call from AuthenticatedHomeView.onAppear during diagnostic phase.
+    func debugPrintHomeData() {
+        print("===== SIKA HOME DIAGNOSTIC =====")
+        print("Total transactions in AppState: \(transactions.count)")
+
+        if transactions.isEmpty {
+            print("⚠️ ZERO transactions in AppState. Check loadProfile fan-out + TransactionService.")
+        } else {
+            print("--- First 3 transactions (raw) ---")
+            for (idx, tx) in transactions.prefix(3).enumerated() {
+                print("[\(idx)] id=\(tx.id)")
+                let mirror = Mirror(reflecting: tx)
+                for child in mirror.children {
+                    if let label = child.label {
+                        print("    \(label): \(child.value)")
+                    }
+                }
+            }
+        }
+
+        print("--- Current cycle ---")
+        let cycle = currentCycle
+        print("cycleOffset: \(cycleOffset)")
+        print("cycle.start: \(cycle.start)")
+        print("cycle.end: \(cycle.end)")
+        print("cycle.label: \(cycle.label)")
+        print("cycle.isCurrent: \(cycle.isCurrent)")
+
+        print("--- Profile cycleStartDay ---")
+        if case .authenticated(let profile) = flow {
+            print("profile.cycleStartDay: \(String(describing: profile.cycleStartDay))")
+            print("profile.monthlyIncome: \(String(describing: profile.monthlyIncome))")
+        }
+
+        print("--- Income sources ---")
+        print("Total: \(incomeSources.count)")
+        for source in incomeSources {
+            let mirror = Mirror(reflecting: source)
+            print("  source:")
+            for child in mirror.children {
+                if let label = child.label {
+                    print("    \(label): \(child.value)")
+                }
+            }
+        }
+
+        print("--- monthlyIncomeAmount derivation ---")
+        print("Computed: \(monthlyIncomeAmount)")
+
+        print("--- Filter test: transactions in displayed cycle (string compare) ---")
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        let startStr = formatter.string(from: cycle.start)
+        let endStr = formatter.string(from: cycle.end)
+        let inCycle = transactions.filter { $0.transactionDate >= startStr && $0.transactionDate <= endStr }
+        print("cycle window strings: \(startStr) ... \(endStr)")
+        print("Count in window: \(inCycle.count)")
+
+        print("===============================")
+    }
+    #endif
 }
