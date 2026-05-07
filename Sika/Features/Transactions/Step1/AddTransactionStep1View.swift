@@ -33,49 +33,62 @@ struct AddTransactionStep1View: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: SikaTheme.Spacing.lg) {
+            // PINNED TOP: heading + step indicator
             Text("How much?")
                 .font(SikaTheme.Typography.sans(28, weight: .bold))
                 .foregroundStyle(SikaTheme.Color.foreground)
+                .padding(.horizontal, SikaTheme.Spacing.lg)
+                .padding(.top, SikaTheme.Spacing.lg)
 
             StepIndicator3(currentStep: 1)
+                .padding(.horizontal, SikaTheme.Spacing.lg)
 
-            Spacer().frame(height: SikaTheme.Spacing.lg)
+            // SCROLLABLE MIDDLE: amount + pills + numpad + (reconcile + accounts)
+            ScrollView {
+                VStack(spacing: SikaTheme.Spacing.lg) {
+                    Spacer().frame(height: SikaTheme.Spacing.md)
 
-            VStack(spacing: SikaTheme.Spacing.lg) {
-                AmountDisplay(amountString: viewModel.amountString)
-                TypePillSelector(selected: bindingForType)
+                    AmountDisplay(amountString: viewModel.amountString)
+                    TypePillSelector(selected: bindingForType)
+
+                    NumberPad(
+                        onDigitTap: { viewModel.appendDigit($0) },
+                        onBackspaceTap: { viewModel.backspace() }
+                    )
+
+                    if viewModel.showsAccountsAndReconcile {
+                        ReconcileLink(onTap: { showReconcileToast = true })
+
+                        AccountChipsRow(
+                            accounts: accounts,
+                            selectedId: bindingForAccountId
+                        )
+                    }
+
+                    Spacer().frame(height: SikaTheme.Spacing.lg)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, SikaTheme.Spacing.lg)
+                .animation(.spring(response: 0.4, dampingFraction: 0.85),
+                           value: viewModel.showsAccountsAndReconcile)
             }
-            .frame(maxWidth: .infinity)
-
-            NumberPad(
-                onDigitTap: { viewModel.appendDigit($0) },
-                onBackspaceTap: { viewModel.backspace() }
-            )
-
-            if viewModel.showsAccountsAndReconcile {
-                ReconcileLink(onTap: { showReconcileToast = true })
-
-                AccountChipsRow(
-                    accounts: accounts,
-                    selectedId: bindingForAccountId
-                )
-            }
-
-            Spacer()
-
+            .scrollDismissesKeyboard(.interactively)
+            .scrollIndicators(.hidden)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(SikaTheme.Color.background)
+        .safeAreaInset(edge: .bottom) {
+            // PINNED BOTTOM: Next button always visible
             NextButton(
                 isEnabled: viewModel.canAdvance(accounts: accounts),
                 action: {
                     // Wizard navigation lands in 1B-2e
                 }
             )
+            .padding(.horizontal, SikaTheme.Spacing.lg)
+            .padding(.vertical, SikaTheme.Spacing.md)
+            .background(SikaTheme.Color.background)
         }
-        .padding(.horizontal, SikaTheme.Spacing.lg)
-        .padding(.top, SikaTheme.Spacing.lg)
-        .padding(.bottom, SikaTheme.Spacing.lg)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(SikaTheme.Color.background)
-        .ignoresSafeArea(.keyboard)
         .overlay(alignment: .top) {
             if showReconcileToast {
                 Text("Reconcile coming soon")
@@ -94,8 +107,6 @@ struct AddTransactionStep1View: View {
                     }
             }
         }
-        .animation(.spring(response: 0.4, dampingFraction: 0.85),
-                   value: viewModel.showsAccountsAndReconcile)
     }
 }
 
