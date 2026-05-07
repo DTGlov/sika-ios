@@ -29,6 +29,10 @@ final class AppState {
     private(set) var pendingTransactions: [Transaction] = []
     private(set) var onboardingDismissedThisSession: Bool = false
 
+    /// Cycle navigation: 0 = current cycle, -1 = previous, +1 = next (disallowed
+    /// while on current). Per-session state; doesn't persist across launches.
+    var cycleOffset: Int = 0
+
     private let authService: AuthService
     private let profileService: ProfileService
     private let incomeService: IncomeService
@@ -57,6 +61,82 @@ final class AppState {
     var currencyCode: String {
         guard case .authenticated(let profile) = flow else { return "GHS" }
         return profile.currency
+    }
+
+    // MARK: - Cycle (Home)
+
+    /// Cycle start day from profile, defaulting to 1 (calendar month) if profile
+    /// not loaded or value is invalid (out of 1...28 range to avoid month-clamping
+    /// edge cases beyond what CycleCalculator already handles).
+    private var profileCycleStartDay: Int {
+        if case .authenticated(let profile) = flow {
+            let day = profile.cycleStartDay ?? 1
+            return (1...31).contains(day) ? day : 1
+        }
+        return 1
+    }
+
+    /// The cycle currently displayed on Home, derived from cycleOffset and the
+    /// authenticated profile's cycleStartDay.
+    var currentCycle: Cycle {
+        CycleCalculator.cycle(
+            atOffset: cycleOffset,
+            fromDate: Date(),
+            cycleStartDay: profileCycleStartDay
+        )
+    }
+
+    /// Whether the displayed cycle is the present-day one. Drives Right-arrow
+    /// disabled state and "Past month" subtitle visibility.
+    var isOnCurrentCycle: Bool {
+        cycleOffset == 0
+    }
+
+    /// Effective monthly income. Sums active income_sources via their
+    /// monthlyEquivalent (which already maps weekly→×4.333, biweekly→×2.167);
+    /// falls back to profile.monthlyIncome when no active sources exist.
+    var monthlyIncomeAmount: Decimal {
+        let activeSources = incomeSources.filter { $0.isActive }
+        if !activeSources.isEmpty {
+            return activeSources.reduce(Decimal(0)) { $0 + $1.monthlyEquivalent }
+        }
+        if case .authenticated(let profile) = flow {
+            return profile.monthlyIncome ?? 0
+        }
+        return 0
+    }
+
+    func goToPreviousCycle() {
+        cycleOffset -= 1
+    }
+
+    func goToNextCycle() {
+        guard !isOnCurrentCycle else { return }
+        cycleOffset += 1
+    }
+
+    func returnToCurrentCycle() {
+        cycleOffset = 0
+    }
+
+    /// Re-fetch all Home data sources in parallel (income, accounts, categories,
+    /// transactions). Profile is intentionally NOT refetched here — it's stable
+    /// across a session and full refresh would risk bouncing the user out on
+    /// transient profile errors. Called by pull-to-refresh.
+    func refreshHomeData() async {
+        guard case .authenticated = flow else { return }
+
+        async let sourcesResult: [IncomeSource] = fetchIncomeSourcesOrEmpty()
+        async let accountsResult: [Account] = fetchAccountsOrEmpty()
+        async let categoriesResult: [TransactionCategory] = fetchCategoriesOrEmpty()
+        async let transactionsResult: [Transaction] = fetchTransactionsOrEmpty()
+        let (sources, accounts, categories, transactions) = await
+            (sourcesResult, accountsResult, categoriesResult, transactionsResult)
+
+        self.incomeSources = sources
+        self.accounts = accounts
+        self.categories = categories
+        self.transactions = transactions
     }
 
     // MARK: - Optimistic transaction inserts

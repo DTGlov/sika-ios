@@ -32,4 +32,17 @@ enum CurrencyFormatter {
         if code == "GHS" { return "GHS" }
         return CurrencyCatalog.currency(forCode: code)?.symbol ?? code
     }
+
+    /// Compact number formatting WITHOUT a currency prefix.
+    /// "5300" → "5.3K" on iOS 18+; "5,300.00" otherwise. "70" → "70.00".
+    /// Use when the currency code is rendered separately (e.g. SpendCard's "GHS" header).
+    static func compactRaw(_ amount: Decimal) -> String {
+        let absValue = abs(NSDecimalNumber(decimal: amount).doubleValue)
+        if absValue >= 1000 {
+            if #available(iOS 18, *) {
+                return amount.formatted(.number.notation(.compactName).precision(.fractionLength(0...1)))
+            }
+        }
+        return amount.formatted(.number.precision(.fractionLength(2)))
+    }
 }
