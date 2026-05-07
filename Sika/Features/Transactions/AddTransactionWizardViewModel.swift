@@ -184,6 +184,7 @@ final class AddTransactionWizardViewModel {
             fromAccountId: fromAccountId,
             categoryId: categoryId,
             goalId: goalId,
+            paidFromGoalId: nil,
             transactionDate: dateString,
             note: noteValue,
             isActive: true,

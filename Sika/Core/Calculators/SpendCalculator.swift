@@ -47,16 +47,17 @@ enum SpendCalculator {
             .reduce(Decimal(0)) { $0 + $1.amount }
     }
 
-    /// Cycle-bounded spent total (expense transactions in cycle).
-    /// Excludes paid-from-target transactions (goalId set) — those don't
-    /// count as net spend because the saving already accounted for them.
+    /// Cycle-bounded spent total. Sum of expense transactions within the
+    /// cycle window, excluding expenses paid from a goal's saved funds
+    /// (those were already accounted for by the original goal contribution).
+    /// Matches web's totalSpentActual (use-dashboard-data.ts:101).
     static func cycleSpent(transactions: [Transaction], cycle: Cycle) -> Decimal {
         let start = dateString(cycle.start)
         let end = dateString(cycle.end)
         return transactions
             .filter { $0.type == .expense }
             .filter { $0.transactionDate >= start && $0.transactionDate <= end }
-            .filter { $0.goalId == nil }
+            .filter { $0.paidFromGoalId == nil }
             .reduce(Decimal(0)) { $0 + $1.amount }
     }
 
