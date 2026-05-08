@@ -9,10 +9,23 @@ struct CycleCard: View {
     let userName: String?
     let theme: HeritageCardTheme
     var currencyCode: String = "GHS"
+    /// Optional tap handler. When nil, the card renders without a Button
+    /// wrapper (matches the Settings preview's read-only usage).
+    /// When non-nil (Phase 6.5), tapping pushes Cycle Details on Home.
+    var onTap: (() -> Void)? = nil
 
     private var palette: HeritagePalette { theme.palette }
 
     var body: some View {
+        if let onTap {
+            Button(action: onTap) { content }
+                .buttonStyle(CycleCardButtonStyle())
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         ZStack {
             // Base background
             RoundedRectangle(cornerRadius: 24)
@@ -119,5 +132,15 @@ struct CycleCard: View {
         guard let name = userName?.trimmingCharacters(in: .whitespaces),
               !name.isEmpty else { return nil }
         return name
+    }
+}
+
+/// Subtle scale-on-press button style for the heritage CycleCard.
+/// 0.985 scale + ease-out 0.12s — matches the prompt's "subtle haptic feel".
+private struct CycleCardButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
