@@ -40,6 +40,16 @@ final class AppState {
     /// failed to fetch, or the row's dismissed_at is set). Populated by
     /// loadProfile / refreshHomeData.
     private(set) var dailyInsight: DailyInsightRow? = nil
+    /// Income sources due today and not yet dismissed. Populated by phase-2
+    /// fetch after the parallel fan-out of secondary data.
+    private(set) var incomeNudges: [IncomeNudge] = []
+    /// Recurring rules with at least one missed occurrence (auto_log=false).
+    /// Income-typed rules are filtered at the view boundary via
+    /// `visiblePendingRecurring`.
+    private(set) var pendingRecurring: [PendingRecurring] = []
+    /// Once-per-session guard for the auto_log=true silent generation pass.
+    /// Mirrors web's useRef-based "have we run this yet" check.
+    private var hasGeneratedThisSession: Bool = false
     private(set) var onboardingDismissedThisSession: Bool = false
 
     /// Cycle navigation: 0 = current cycle, -1 = previous, +1 = next (disallowed
@@ -56,6 +66,8 @@ final class AppState {
     private let budgetBucketService: BudgetBucketService
     private let dismissedHintService: DismissedHintService
     private let dailyInsightService: DailyInsightService
+    private let recurringService: RecurringService
+    private let incomeNudgeService: IncomeNudgeService
     private var authObserverTask: Task<Void, Never>?
 
     init(
@@ -68,7 +80,9 @@ final class AppState {
         goalService: GoalService = GoalService(),
         budgetBucketService: BudgetBucketService = BudgetBucketService(),
         dismissedHintService: DismissedHintService = DismissedHintService(),
-        dailyInsightService: DailyInsightService = DailyInsightService()
+        dailyInsightService: DailyInsightService = DailyInsightService(),
+        recurringService: RecurringService = RecurringService(),
+        incomeNudgeService: IncomeNudgeService = IncomeNudgeService()
     ) {
         self.authService = authService
         self.profileService = profileService
@@ -80,6 +94,8 @@ final class AppState {
         self.budgetBucketService = budgetBucketService
         self.dismissedHintService = dismissedHintService
         self.dailyInsightService = dailyInsightService
+        self.recurringService = recurringService
+        self.incomeNudgeService = incomeNudgeService
     }
 
     /// Active currency code from the authenticated profile, or "GHS" as fallback.
@@ -173,6 +189,50 @@ final class AppState {
         self.dismissedHints = Set(hints)
         self.hintsLoaded = true
         self.dailyInsight = insight
+
+        await loadNudgesAndRecurring()
+    }
+
+    /// Phase-2 loader for income nudges + recurring auto-log + pending.
+    /// Runs sequentially after the main parallel batch because it depends on
+    /// `incomeSources` being populated and the once-per-session guard.
+    private func loadNudgesAndRecurring() async {
+        guard let userId = session?.user.id else { return }
+
+        self.incomeNudges = await fetchIncomeNudgesOrEmpty(
+            userId: userId,
+            sources: incomeSources
+        )
+
+        if !hasGeneratedThisSession {
+            self.pendingRecurring = await generateRecurringOrEmpty(userId: userId)
+            self.hasGeneratedThisSession = true
+        }
+        // After the once-per-session guard fires, we leave pendingRecurring
+        // alone on subsequent refreshes — confirm/skip mutate it directly.
+    }
+
+    private func fetchIncomeNudgesOrEmpty(userId: UUID, sources: [IncomeSource]) async -> [IncomeNudge] {
+        guard !sources.isEmpty else { return [] }
+        do {
+            return try await incomeNudgeService.dueNudges(userId: userId, sources: sources)
+        } catch {
+            #if DEBUG
+            print("⚠️ Income nudges fetch failed (continuing as empty): \(error)")
+            #endif
+            return []
+        }
+    }
+
+    private func generateRecurringOrEmpty(userId: UUID) async -> [PendingRecurring] {
+        do {
+            return try await recurringService.generateAndCollectPending(userId: userId)
+        } catch {
+            #if DEBUG
+            print("⚠️ Recurring generation failed (continuing as empty): \(error)")
+            #endif
+            return []
+        }
     }
 
     /// Top 3 active goals by priority for GoalsWidget display.
@@ -182,6 +242,13 @@ final class AppState {
             .sorted { ($0.priority ?? Int.max) < ($1.priority ?? Int.max) }
             .prefix(3)
             .map { $0 }
+    }
+
+    /// Pending recurring rules visible on Home. Income-typed rules are
+    /// filtered out per web's legacy-data hygiene (income comes from
+    /// income_sources, not recurring_transactions).
+    var visiblePendingRecurring: [PendingRecurring] {
+        pendingRecurring.filter { $0.recurring.type != .income }
     }
 
     /// Transactions whose `transactionDate` (yyyy-MM-dd string) falls within
@@ -372,6 +439,8 @@ final class AppState {
         self.hintsLoaded = true
         self.dailyInsight = insight
 
+        await loadNudgesAndRecurring()
+
         flow = .authenticated(profile: profile)
 
         if let session = self.session {
@@ -524,6 +593,146 @@ final class AppState {
         } catch {
             #if DEBUG
             print("⚠️ DailyInsight dismiss failed (silent, matches web): \(error)")
+            #endif
+        }
+    }
+
+    // MARK: - Income nudges
+
+    /// "Yes, log it" on income nudge: insert a transaction and record the
+    /// dismissal as `.logged`. Uses the user's default account
+    /// (account.isDefault == true), falling back to the first account.
+    /// Silently no-ops when no account exists (toast UI not shipped yet).
+    func logIncomeNudge(_ nudge: IncomeNudge) async {
+        guard let userId = session?.user.id else { return }
+        guard let account = accounts.first(where: { $0.isDefault == true })
+            ?? accounts.first else {
+            #if DEBUG
+            print("⚠️ logIncomeNudge: no account available; cannot insert")
+            #endif
+            return
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        let today = formatter.string(from: Date())
+
+        let draft = TransactionDraft(
+            userId: userId,
+            type: .income,
+            amount: nudge.incomeSource.amount,
+            accountId: account.id,
+            fromAccountId: nil,
+            categoryId: nil,
+            transactionDate: today,
+            note: nudge.incomeSource.name,
+            isActive: true
+        )
+
+        do {
+            _ = try await transactionService.insert(draft)
+            try await incomeNudgeService.recordDismissal(
+                userId: userId,
+                sourceId: nudge.incomeSource.id,
+                dueDate: nudge.dueDate,
+                action: .logged
+            )
+            withAnimation(.easeOut(duration: 0.2)) {
+                incomeNudges.removeAll { $0.id == nudge.id }
+            }
+            await refreshHomeData()
+        } catch {
+            #if DEBUG
+            print("⚠️ logIncomeNudge failed: \(error)")
+            #endif
+        }
+    }
+
+    /// "Not yet" on income nudge — same suppression effect as dismiss, but
+    /// recorded with `action = .snoozed` so analytics can distinguish.
+    func snoozeIncomeNudge(_ nudge: IncomeNudge) async {
+        guard let userId = session?.user.id else { return }
+        withAnimation(.easeOut(duration: 0.2)) {
+            incomeNudges.removeAll { $0.id == nudge.id }
+        }
+        do {
+            try await incomeNudgeService.recordDismissal(
+                userId: userId,
+                sourceId: nudge.incomeSource.id,
+                dueDate: nudge.dueDate,
+                action: .snoozed
+            )
+        } catch {
+            #if DEBUG
+            print("⚠️ snoozeIncomeNudge failed (silent): \(error)")
+            #endif
+        }
+    }
+
+    /// X dismiss on income nudge.
+    func dismissIncomeNudge(_ nudge: IncomeNudge) async {
+        guard let userId = session?.user.id else { return }
+        withAnimation(.easeOut(duration: 0.2)) {
+            incomeNudges.removeAll { $0.id == nudge.id }
+        }
+        do {
+            try await incomeNudgeService.recordDismissal(
+                userId: userId,
+                sourceId: nudge.incomeSource.id,
+                dueDate: nudge.dueDate,
+                action: .dismissed
+            )
+        } catch {
+            #if DEBUG
+            print("⚠️ dismissIncomeNudge failed (silent): \(error)")
+            #endif
+        }
+    }
+
+    // MARK: - Pending recurring
+
+    /// "Log it" on a pending recurring: insert a transaction at the latest
+    /// missed due date and bump last_generated_date. Optimistic local removal.
+    func confirmPendingRecurring(_ pending: PendingRecurring) async {
+        guard let userId = session?.user.id else { return }
+        guard let dueDate = pending.latestDueDate else { return }
+
+        withAnimation(.easeOut(duration: 0.2)) {
+            pendingRecurring.removeAll { $0.id == pending.id }
+        }
+
+        do {
+            try await recurringService.confirmPending(
+                userId: userId,
+                recurring: pending.recurring,
+                dueDate: dueDate
+            )
+            await refreshHomeData()
+        } catch {
+            #if DEBUG
+            print("⚠️ confirmPendingRecurring failed: \(error)")
+            #endif
+        }
+    }
+
+    /// "Skip" on a pending recurring: just bump last_generated_date.
+    func skipPendingRecurring(_ pending: PendingRecurring) async {
+        guard let dueDate = pending.latestDueDate else { return }
+
+        withAnimation(.easeOut(duration: 0.2)) {
+            pendingRecurring.removeAll { $0.id == pending.id }
+        }
+
+        do {
+            try await recurringService.skipPending(
+                recurringId: pending.recurring.id,
+                dueDate: dueDate
+            )
+        } catch {
+            #if DEBUG
+            print("⚠️ skipPendingRecurring failed (silent): \(error)")
             #endif
         }
     }

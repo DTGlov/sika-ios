@@ -92,6 +92,31 @@ struct AuthenticatedHomeView: View {
                 SundayRecapCard()
                     .padding(.horizontal, SikaTheme.Spacing.lg)
 
+                if !appState.incomeNudges.isEmpty || !appState.visiblePendingRecurring.isEmpty {
+                    VStack(spacing: 8) {
+                        ForEach(appState.incomeNudges) { nudge in
+                            IncomeNudgeCardView(
+                                nudge: nudge,
+                                currencyCode: appState.currencyCode,
+                                onLog: { n in Task { await appState.logIncomeNudge(n) } },
+                                onSnooze: { n in Task { await appState.snoozeIncomeNudge(n) } },
+                                onDismiss: { n in Task { await appState.dismissIncomeNudge(n) } }
+                            )
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                        ForEach(appState.visiblePendingRecurring) { pending in
+                            PendingRecurringCardView(
+                                pending: pending,
+                                currencyCode: appState.currencyCode,
+                                onConfirm: { p in Task { await appState.confirmPendingRecurring(p) } },
+                                onSkip: { p in Task { await appState.skipPendingRecurring(p) } }
+                            )
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                    .padding(.horizontal, SikaTheme.Spacing.lg)
+                }
+
                 GoalsWidget(
                     goals: appState.topGoals,
                     currencyCode: appState.currencyCode,
