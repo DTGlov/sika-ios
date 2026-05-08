@@ -40,6 +40,10 @@ final class AppState {
     /// failed to fetch, or the row's dismissed_at is set). Populated by
     /// loadProfile / refreshHomeData.
     private(set) var dailyInsight: DailyInsightRow? = nil
+    /// Latest cycle-end recap that should trigger the banner (viewed_at IS NULL,
+    /// dismissed_at IS NULL, generated within last 30 days). Populated by
+    /// loadProfile / refreshHomeData.
+    private(set) var monthlyRecap: MonthlyRecap? = nil
     /// Income sources due today and not yet dismissed. Populated by phase-2
     /// fetch after the parallel fan-out of secondary data.
     private(set) var incomeNudges: [IncomeNudge] = []
@@ -68,6 +72,7 @@ final class AppState {
     private let dailyInsightService: DailyInsightService
     private let recurringService: RecurringService
     private let incomeNudgeService: IncomeNudgeService
+    private let monthlyRecapService: MonthlyRecapService
     private var authObserverTask: Task<Void, Never>?
 
     init(
@@ -82,7 +87,8 @@ final class AppState {
         dismissedHintService: DismissedHintService = DismissedHintService(),
         dailyInsightService: DailyInsightService = DailyInsightService(),
         recurringService: RecurringService = RecurringService(),
-        incomeNudgeService: IncomeNudgeService = IncomeNudgeService()
+        incomeNudgeService: IncomeNudgeService = IncomeNudgeService(),
+        monthlyRecapService: MonthlyRecapService = MonthlyRecapService()
     ) {
         self.authService = authService
         self.profileService = profileService
@@ -96,6 +102,7 @@ final class AppState {
         self.dailyInsightService = dailyInsightService
         self.recurringService = recurringService
         self.incomeNudgeService = incomeNudgeService
+        self.monthlyRecapService = monthlyRecapService
     }
 
     /// Active currency code from the authenticated profile, or "GHS" as fallback.
@@ -176,9 +183,10 @@ final class AppState {
         async let bucketsResult: [BudgetBucket] = fetchBudgetBucketsOrEmpty()
         async let hintsResult: [String] = fetchDismissedHintsOrEmpty()
         async let insightResult: DailyInsightRow? = fetchDailyInsightOrNil()
-        let (sources, accounts, categories, transactions, goals, buckets, hints, insight) = await
+        async let recapResult: MonthlyRecap? = fetchMonthlyRecapOrNil()
+        let (sources, accounts, categories, transactions, goals, buckets, hints, insight, recap) = await
             (sourcesResult, accountsResult, categoriesResult, transactionsResult,
-             goalsResult, bucketsResult, hintsResult, insightResult)
+             goalsResult, bucketsResult, hintsResult, insightResult, recapResult)
 
         self.incomeSources = sources
         self.accounts = accounts
@@ -189,6 +197,7 @@ final class AppState {
         self.dismissedHints = Set(hints)
         self.hintsLoaded = true
         self.dailyInsight = insight
+        self.monthlyRecap = recap
 
         await loadNudgesAndRecurring()
     }
@@ -425,9 +434,10 @@ final class AppState {
         async let bucketsResult: [BudgetBucket] = fetchBudgetBucketsOrEmpty()
         async let hintsResult: [String] = fetchDismissedHintsOrEmpty()
         async let insightResult: DailyInsightRow? = fetchDailyInsightOrNil()
-        let (sources, accounts, categories, transactions, goals, buckets, hints, insight) = await
+        async let recapResult: MonthlyRecap? = fetchMonthlyRecapOrNil()
+        let (sources, accounts, categories, transactions, goals, buckets, hints, insight, recap) = await
             (sourcesResult, accountsResult, categoriesResult, transactionsResult,
-             goalsResult, bucketsResult, hintsResult, insightResult)
+             goalsResult, bucketsResult, hintsResult, insightResult, recapResult)
 
         self.incomeSources = sources
         self.accounts = accounts
@@ -438,6 +448,7 @@ final class AppState {
         self.dismissedHints = Set(hints)
         self.hintsLoaded = true
         self.dailyInsight = insight
+        self.monthlyRecap = recap
 
         await loadNudgesAndRecurring()
 
@@ -541,6 +552,20 @@ final class AppState {
         } catch {
             #if DEBUG
             print("⚠️ DailyInsight fetch failed (continuing as nil): \(error)")
+            #endif
+            return nil
+        }
+    }
+
+    /// Fetches the latest monthly_recaps row that satisfies the banner-trigger
+    /// predicate (viewed/dismissed null + generated within last 30 days).
+    /// Returns nil if no eligible row, fetch failed, or filters excluded all rows.
+    private func fetchMonthlyRecapOrNil() async -> MonthlyRecap? {
+        do {
+            return try await monthlyRecapService.fetchLatestForBanner()
+        } catch {
+            #if DEBUG
+            print("⚠️ MonthlyRecap fetch failed (continuing as nil): \(error)")
             #endif
             return nil
         }
@@ -733,6 +758,53 @@ final class AppState {
         } catch {
             #if DEBUG
             print("⚠️ skipPendingRecurring failed (silent): \(error)")
+            #endif
+        }
+    }
+
+    // MARK: - MonthlyRecap
+
+    /// X dismiss on the monthly recap banner. Sets dismissed_at on the row;
+    /// banner stays gone for THIS recap but next cycle's row is independent.
+    /// Optimistic local clear; failures silently logged in DEBUG.
+    func dismissMonthlyRecap() async {
+        guard let recap = monthlyRecap else { return }
+        withAnimation(.easeOut(duration: 0.2)) {
+            monthlyRecap = nil
+        }
+        do {
+            try await monthlyRecapService.dismiss(recapId: recap.id)
+        } catch {
+            #if DEBUG
+            print("⚠️ dismissMonthlyRecap failed (silent): \(error)")
+            #endif
+        }
+    }
+
+    /// Mark the recap as viewed (called from MonthlyRecapDetailView's
+    /// onAppear, guarded once per detail view instance).
+    /// Hides banner permanently for this recap — clears AppState.monthlyRecap
+    /// if it matches so navigating back to Home shows no banner.
+    func markMonthlyRecapViewed(recapId: UUID) async {
+        if monthlyRecap?.id == recapId {
+            monthlyRecap = nil
+        }
+        do {
+            try await monthlyRecapService.markViewed(recapId: recapId)
+        } catch {
+            #if DEBUG
+            print("⚠️ markMonthlyRecapViewed failed (silent): \(error)")
+            #endif
+        }
+    }
+
+    /// Mark the recap as shared (analytics-only; doesn't affect banner visibility).
+    func markMonthlyRecapShared(recapId: UUID) async {
+        do {
+            try await monthlyRecapService.markShared(recapId: recapId)
+        } catch {
+            #if DEBUG
+            print("⚠️ markMonthlyRecapShared failed (silent): \(error)")
             #endif
         }
     }
