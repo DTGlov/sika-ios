@@ -33,6 +33,17 @@ struct AuthenticatedHomeView: View {
                     onNext: { appState.goToNextCycle() }
                 )
 
+                if let insightRow = appState.dailyInsight {
+                    DailyInsightBanner(
+                        insight: insightRow.insightData,
+                        onDismiss: {
+                            Task { await appState.dismissDailyInsight() }
+                        }
+                    )
+                    .padding(.horizontal, SikaTheme.Spacing.lg)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
                 CycleCard(
                     cycleNet: SpendCalculator.cycleNet(
                         transactions: appState.transactions,

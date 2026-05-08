@@ -36,6 +36,10 @@ final class AppState {
     /// the result is empty). HintCard gates its skeleton placeholder on this
     /// to prevent the flash-then-hide on fresh sign-in.
     private(set) var hintsLoaded: Bool = false
+    /// Today's AI-generated insight row (or nil when there's no row, the row
+    /// failed to fetch, or the row's dismissed_at is set). Populated by
+    /// loadProfile / refreshHomeData.
+    private(set) var dailyInsight: DailyInsightRow? = nil
     private(set) var onboardingDismissedThisSession: Bool = false
 
     /// Cycle navigation: 0 = current cycle, -1 = previous, +1 = next (disallowed
@@ -51,6 +55,7 @@ final class AppState {
     private let goalService: GoalService
     private let budgetBucketService: BudgetBucketService
     private let dismissedHintService: DismissedHintService
+    private let dailyInsightService: DailyInsightService
     private var authObserverTask: Task<Void, Never>?
 
     init(
@@ -62,7 +67,8 @@ final class AppState {
         transactionService: TransactionService = TransactionService(),
         goalService: GoalService = GoalService(),
         budgetBucketService: BudgetBucketService = BudgetBucketService(),
-        dismissedHintService: DismissedHintService = DismissedHintService()
+        dismissedHintService: DismissedHintService = DismissedHintService(),
+        dailyInsightService: DailyInsightService = DailyInsightService()
     ) {
         self.authService = authService
         self.profileService = profileService
@@ -73,6 +79,7 @@ final class AppState {
         self.goalService = goalService
         self.budgetBucketService = budgetBucketService
         self.dismissedHintService = dismissedHintService
+        self.dailyInsightService = dailyInsightService
     }
 
     /// Active currency code from the authenticated profile, or "GHS" as fallback.
@@ -152,9 +159,10 @@ final class AppState {
         async let goalsResult: [Goal] = fetchGoalsOrEmpty()
         async let bucketsResult: [BudgetBucket] = fetchBudgetBucketsOrEmpty()
         async let hintsResult: [String] = fetchDismissedHintsOrEmpty()
-        let (sources, accounts, categories, transactions, goals, buckets, hints) = await
+        async let insightResult: DailyInsightRow? = fetchDailyInsightOrNil()
+        let (sources, accounts, categories, transactions, goals, buckets, hints, insight) = await
             (sourcesResult, accountsResult, categoriesResult, transactionsResult,
-             goalsResult, bucketsResult, hintsResult)
+             goalsResult, bucketsResult, hintsResult, insightResult)
 
         self.incomeSources = sources
         self.accounts = accounts
@@ -164,6 +172,7 @@ final class AppState {
         self.budgetBuckets = buckets
         self.dismissedHints = Set(hints)
         self.hintsLoaded = true
+        self.dailyInsight = insight
     }
 
     /// Top 3 active goals by priority for GoalsWidget display.
@@ -348,9 +357,10 @@ final class AppState {
         async let goalsResult: [Goal] = fetchGoalsOrEmpty()
         async let bucketsResult: [BudgetBucket] = fetchBudgetBucketsOrEmpty()
         async let hintsResult: [String] = fetchDismissedHintsOrEmpty()
-        let (sources, accounts, categories, transactions, goals, buckets, hints) = await
+        async let insightResult: DailyInsightRow? = fetchDailyInsightOrNil()
+        let (sources, accounts, categories, transactions, goals, buckets, hints, insight) = await
             (sourcesResult, accountsResult, categoriesResult, transactionsResult,
-             goalsResult, bucketsResult, hintsResult)
+             goalsResult, bucketsResult, hintsResult, insightResult)
 
         self.incomeSources = sources
         self.accounts = accounts
@@ -360,6 +370,7 @@ final class AppState {
         self.budgetBuckets = buckets
         self.dismissedHints = Set(hints)
         self.hintsLoaded = true
+        self.dailyInsight = insight
 
         flow = .authenticated(profile: profile)
 
@@ -450,6 +461,22 @@ final class AppState {
         }
     }
 
+    /// Fetches today's daily_insights row. Returns nil when no row exists,
+    /// the fetch failed, or the row is already dismissed (we don't surface
+    /// dismissed insights to the view layer).
+    private func fetchDailyInsightOrNil() async -> DailyInsightRow? {
+        guard let userId = session?.user.id else { return nil }
+        do {
+            let row = try await dailyInsightService.fetchToday(userId: userId)
+            return (row?.dismissedAt == nil) ? row : nil
+        } catch {
+            #if DEBUG
+            print("⚠️ DailyInsight fetch failed (continuing as nil): \(error)")
+            #endif
+            return nil
+        }
+    }
+
     // MARK: - Hint helpers
 
     /// Whether a given hint has been dismissed.
@@ -478,5 +505,26 @@ final class AppState {
         try await dismissedHintService.resetAll()
         dismissedHints.removeAll()
         hintsLoaded = true
+    }
+
+    // MARK: - DailyInsight
+
+    /// Optimistically clears today's insight banner. Updates local state
+    /// immediately, fires the dismissed_at UPDATE in the background, ignores
+    /// failures (matches web's no-rollback pattern).
+    /// Wraps the local clear in `withAnimation` so the banner's `.transition`
+    /// fires when the conditional unmounts.
+    func dismissDailyInsight() async {
+        withAnimation(.easeOut(duration: 0.2)) {
+            dailyInsight = nil
+        }
+        guard let userId = session?.user.id else { return }
+        do {
+            try await dailyInsightService.dismissToday(userId: userId)
+        } catch {
+            #if DEBUG
+            print("⚠️ DailyInsight dismiss failed (silent, matches web): \(error)")
+            #endif
+        }
     }
 }
