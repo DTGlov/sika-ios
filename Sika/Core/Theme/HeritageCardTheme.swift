@@ -34,6 +34,28 @@ enum HeritageCardTheme: String, CaseIterable, Identifiable, Codable {
         }
     }
 
+    /// Subtitle line for Settings section: "Sankofa — Learn from the past"
+    /// or just "Copper" if no Adinkra meaning.
+    var subtitleLine: String {
+        if let meaning = meaning {
+            return "\(displayName) — \(meaning)"
+        }
+        return displayName
+    }
+
+    /// Display ordering for the theme picker grid. Mirrors web's THEME_ORDER.
+    static let pickerOrder: [HeritageCardTheme] = [
+        .sankofa, .gyeNyame, .adinkrahene, .copper, .emerald, .amber, .obsidian
+    ]
+
+    /// Returns the appropriate balance text color for a given cycle net value.
+    /// Negative → red, zero → gray, positive → palette.balanceText.
+    func balanceColor(forNet net: Decimal) -> Color {
+        if net < 0 { return Color(hex: 0xF43F5E) }
+        if net == 0 { return Color(hex: 0xA1A1AA) }
+        return palette.balanceText
+    }
+
     var palette: HeritagePalette {
         switch self {
         case .sankofa:
