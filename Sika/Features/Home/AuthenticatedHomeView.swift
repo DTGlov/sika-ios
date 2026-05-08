@@ -20,6 +20,10 @@ struct AuthenticatedHomeView: View {
     /// Keeping the recap as State (not just an id) so the detail keeps its
     /// data even after AppState.monthlyRecap clears via markViewed.
     @State private var navigatedRecap: MonthlyRecap? = nil
+    /// Bound to NavigationStack push for DailyDigestDetailView. Same pattern
+    /// as `navigatedRecap` — captures the digest at tap time so the detail
+    /// view keeps it after AppState.digestRead flips.
+    @State private var navigatedDigest: DailyDigest? = nil
 
     var body: some View {
         ScrollView {
@@ -37,6 +41,15 @@ struct AuthenticatedHomeView: View {
                     onPrevious: { appState.goToPreviousCycle() },
                     onNext: { appState.goToNextCycle() }
                 )
+
+                if appState.shouldShowDailyDigestBanner, let digest = appState.todayDigest {
+                    DailyDigestBanner(
+                        digest: digest,
+                        onTap: { navigatedDigest = digest }
+                    )
+                    .padding(.horizontal, SikaTheme.Spacing.lg)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
 
                 if let insightRow = appState.dailyInsight {
                     DailyInsightBanner(
@@ -205,6 +218,13 @@ struct AuthenticatedHomeView: View {
                 onShare: {
                     Task { await appState.markMonthlyRecapShared(recapId: recap.id) }
                 }
+            )
+        }
+        .navigationDestination(item: $navigatedDigest) { digest in
+            DailyDigestDetailView(
+                digest: digest,
+                isInitiallyRead: appState.digestRead,
+                onMarkRead: { await appState.markDigestRead() }
             )
         }
         .toolbar(.hidden, for: .navigationBar)
