@@ -13,7 +13,10 @@ struct AuthenticatedRootView: View {
                 switch selectedTab {
                 case .home:
                     NavigationStack {
-                        AuthenticatedHomeView(profile: profile)
+                        AuthenticatedHomeView(
+                            profile: profile,
+                            onSwitchToTransactions: { selectedTab = .transactions }
+                        )
                     }
                 case .transactions:
                     TransactionsTabPlaceholder()

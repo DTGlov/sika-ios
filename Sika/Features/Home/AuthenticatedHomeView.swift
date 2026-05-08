@@ -12,6 +12,9 @@ import SwiftUI
 /// - Phase 7+: income nudges, recurring cards, Should I Buy, gamification
 struct AuthenticatedHomeView: View {
     let profile: Profile
+    /// Closure used by ShouldIBuyButton's "I bought it" flow to switch the
+    /// main tab to Transactions. Owned by `AuthenticatedRootView`.
+    let onSwitchToTransactions: () -> Void
 
     @Environment(AppState.self) private var appState
     @State private var isSettingsPresented = false
@@ -122,6 +125,9 @@ struct AuthenticatedHomeView: View {
                     ),
                     currencyCode: appState.currencyCode
                 )
+
+                ShouldIBuyButton(onSwitchToTransactions: onSwitchToTransactions)
+                    .padding(.horizontal, SikaTheme.Spacing.lg)
 
                 SundayRecapCard()
                     .padding(.horizontal, SikaTheme.Spacing.lg)
