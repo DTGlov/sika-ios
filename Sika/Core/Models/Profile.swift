@@ -53,4 +53,26 @@ struct Profile: Codable, Identifiable, Equatable {
     var needsPercentValue: Decimal { needsPercent ?? 45 }
     var wantsPercentValue: Decimal { wantsPercent ?? 15 }
     var savingsPercentValue: Decimal { savingsPercent ?? 40 }
+
+    /// Returns a copy of this profile with `cardTheme` replaced.
+    /// Used by AppState's optimistic update path — Profile fields are `let`,
+    /// so mutation requires constructing a new instance.
+    func withCardTheme(_ value: String) -> Profile {
+        Profile(
+            id: id,
+            fullName: fullName,
+            monthlyIncome: monthlyIncome,
+            currency: currency,
+            needsPercent: needsPercent,
+            wantsPercent: wantsPercent,
+            savingsPercent: savingsPercent,
+            cycleStartDay: cycleStartDay,
+            cardTheme: value,
+            themePreference: themePreference,
+            hapticsEnabled: hapticsEnabled,
+            accountsBannerDismissed: accountsBannerDismissed,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
 }

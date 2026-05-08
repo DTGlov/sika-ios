@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Minimal Settings sheet. Phase 1.5 ships sign-out only.
+/// Settings sheet. Phase 1.5 shipped sign-out only; Phase 6 adds the
+/// "Card Style" section + dashboard_card_theme_available HintCard.
 /// Full Settings tab rebuild ships later with profile, preferences,
 /// category management, income sources, and danger zone.
 struct SettingsView: View {
@@ -30,7 +31,20 @@ struct SettingsView: View {
             .padding(.top, SikaTheme.Spacing.lg)
             .padding(.bottom, SikaTheme.Spacing.md)
 
-            Spacer()
+            ScrollView {
+                VStack(spacing: SikaTheme.Spacing.md) {
+                    HintCard(
+                        hintId: .cardThemeAvailable,
+                        title: "Customize your card",
+                        message: "Choose from 7 heritage-themed card styles inspired by Adinkra symbols and Ghanaian craft. Tap 'Change card' to browse."
+                    )
+
+                    CardStyleSection()
+                }
+                .padding(.horizontal, SikaTheme.Spacing.lg)
+                .padding(.top, SikaTheme.Spacing.sm)
+                .padding(.bottom, SikaTheme.Spacing.lg)
+            }
 
             SikaPrimaryButton(
                 title: "Sign out",

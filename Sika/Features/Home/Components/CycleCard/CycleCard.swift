@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Heritage-themed cycle card. Phase 1 ships with sankofa theme only.
-/// Additional themes (gye_nyame, adinkrahene, copper, emerald, amber, obsidian)
-/// already have palettes in HeritageCardTheme; their motif renderers ship in
-/// Phase 6 polish.
+/// Heritage-themed cycle card. Phase 6 ships all 7 motifs.
+/// Themes: sankofa, gye_nyame, adinkrahene, copper, emerald, amber, obsidian.
+/// Each motif is a stylized SwiftUI Canvas approximation of the web SVG —
+/// faithful enough to be recognizable; not pixel-perfect ports.
 struct CycleCard: View {
     let cycleNet: Decimal
     let userName: String?
@@ -96,10 +96,18 @@ struct CycleCard: View {
         switch theme {
         case .sankofa:
             SankofaMotif(strokeColor: palette.motif, size: 88)
-        default:
-            // Phase 6: per-theme motif renderers. For now, all non-sankofa themes
-            // render the sankofa motif as a placeholder.
-            SankofaMotif(strokeColor: palette.motif, size: 88)
+        case .gyeNyame:
+            GyeNyameMotif(strokeColor: palette.motif, size: 88)
+        case .adinkrahene:
+            AdinkraheneMotif(strokeColor: palette.motif, size: 88)
+        case .copper:
+            CopperMotif(strokeColor: palette.motif, size: 96)
+        case .emerald:
+            EmeraldMotif(strokeColor: palette.motif, width: 180, height: 70)
+        case .amber:
+            AmberMotif(strokeColor: palette.motif, size: 110)
+        case .obsidian:
+            ObsidianMotif(strokeColor: palette.motif, size: 88)
         }
     }
 

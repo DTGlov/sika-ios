@@ -120,6 +120,17 @@ final class AppState {
         return profile.currency
     }
 
+    /// Active card theme from the authenticated profile, with `.sankofa`
+    /// fallback when the profile string is missing or unrecognized.
+    /// Drives CycleCard rendering on Home + the live preview in Settings.
+    var cardTheme: HeritageCardTheme {
+        guard case .authenticated(let profile) = flow,
+              let theme = HeritageCardTheme(rawValue: profile.cardTheme) else {
+            return .sankofa
+        }
+        return theme
+    }
+
     // MARK: - Cycle (Home)
 
     /// Cycle start day from profile, defaulting to 1 (calendar month) if profile
@@ -869,5 +880,41 @@ final class AppState {
             userId: userId,
             digestDate: digest.digestDate
         )
+    }
+
+    // MARK: - Card theme (Phase 6)
+
+    /// Updates the user's card theme. Optimistic local update + Supabase
+    /// write + rollback on error. Profile fields are `let`, so the optimistic
+    /// path constructs a new Profile via `withCardTheme` and replaces the
+    /// `.authenticated` flow case.
+    func updateCardTheme(_ theme: HeritageCardTheme) async {
+        guard case .authenticated(let profile) = flow else { return }
+        let previousValue = profile.cardTheme
+
+        // Optimistic local update.
+        withAnimation(.easeOut(duration: 0.2)) {
+            self.flow = .authenticated(profile: profile.withCardTheme(theme.rawValue))
+        }
+
+        guard let userId = session?.user.id else { return }
+
+        struct Payload: Encodable { let card_theme: String }
+
+        do {
+            try await SupabaseManager.shared.client
+                .from("profiles")
+                .update(Payload(card_theme: theme.rawValue))
+                .eq("id", value: userId)
+                .execute()
+        } catch {
+            // Rollback to previous value.
+            if case .authenticated(let current) = flow {
+                self.flow = .authenticated(profile: current.withCardTheme(previousValue))
+            }
+            #if DEBUG
+            print("⚠️ updateCardTheme failed (rolled back): \(error)")
+            #endif
+        }
     }
 }
