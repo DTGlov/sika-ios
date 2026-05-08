@@ -44,6 +44,12 @@ final class AppState {
     /// dismissed_at IS NULL, generated within last 30 days). Populated by
     /// loadProfile / refreshHomeData.
     private(set) var monthlyRecap: MonthlyRecap? = nil
+    /// Today's news digest (shared across all users; no user_id on the row).
+    /// Populated by loadProfile / refreshHomeData. Nil when no digest for today.
+    private(set) var todayDigest: DailyDigest? = nil
+    /// Whether the current user has marked today's digest read. Drives banner
+    /// visibility together with `todayDigest`.
+    private(set) var digestRead: Bool = false
     /// Income sources due today and not yet dismissed. Populated by phase-2
     /// fetch after the parallel fan-out of secondary data.
     private(set) var incomeNudges: [IncomeNudge] = []
@@ -73,6 +79,7 @@ final class AppState {
     private let recurringService: RecurringService
     private let incomeNudgeService: IncomeNudgeService
     private let monthlyRecapService: MonthlyRecapService
+    private let sikaDailyService: SikaDailyService
     private var authObserverTask: Task<Void, Never>?
 
     init(
@@ -88,7 +95,8 @@ final class AppState {
         dailyInsightService: DailyInsightService = DailyInsightService(),
         recurringService: RecurringService = RecurringService(),
         incomeNudgeService: IncomeNudgeService = IncomeNudgeService(),
-        monthlyRecapService: MonthlyRecapService = MonthlyRecapService()
+        monthlyRecapService: MonthlyRecapService = MonthlyRecapService(),
+        sikaDailyService: SikaDailyService = SikaDailyService()
     ) {
         self.authService = authService
         self.profileService = profileService
@@ -103,6 +111,7 @@ final class AppState {
         self.recurringService = recurringService
         self.incomeNudgeService = incomeNudgeService
         self.monthlyRecapService = monthlyRecapService
+        self.sikaDailyService = sikaDailyService
     }
 
     /// Active currency code from the authenticated profile, or "GHS" as fallback.
@@ -184,9 +193,10 @@ final class AppState {
         async let hintsResult: [String] = fetchDismissedHintsOrEmpty()
         async let insightResult: DailyInsightRow? = fetchDailyInsightOrNil()
         async let recapResult: MonthlyRecap? = fetchMonthlyRecapOrNil()
-        let (sources, accounts, categories, transactions, goals, buckets, hints, insight, recap) = await
+        async let digestResult: (DailyDigest?, Bool) = fetchDigestAndReadState()
+        let (sources, accounts, categories, transactions, goals, buckets, hints, insight, recap, digestPair) = await
             (sourcesResult, accountsResult, categoriesResult, transactionsResult,
-             goalsResult, bucketsResult, hintsResult, insightResult, recapResult)
+             goalsResult, bucketsResult, hintsResult, insightResult, recapResult, digestResult)
 
         self.incomeSources = sources
         self.accounts = accounts
@@ -198,6 +208,8 @@ final class AppState {
         self.hintsLoaded = true
         self.dailyInsight = insight
         self.monthlyRecap = recap
+        self.todayDigest = digestPair.0
+        self.digestRead = digestPair.1
 
         await loadNudgesAndRecurring()
     }
@@ -258,6 +270,12 @@ final class AppState {
     /// income_sources, not recurring_transactions).
     var visiblePendingRecurring: [PendingRecurring] {
         pendingRecurring.filter { $0.recurring.type != .income }
+    }
+
+    /// Whether the DailyDigestBanner should render on Home.
+    /// Mirrors web's `digest && !isRead` predicate.
+    var shouldShowDailyDigestBanner: Bool {
+        todayDigest != nil && !digestRead
     }
 
     /// Transactions whose `transactionDate` (yyyy-MM-dd string) falls within
@@ -435,9 +453,10 @@ final class AppState {
         async let hintsResult: [String] = fetchDismissedHintsOrEmpty()
         async let insightResult: DailyInsightRow? = fetchDailyInsightOrNil()
         async let recapResult: MonthlyRecap? = fetchMonthlyRecapOrNil()
-        let (sources, accounts, categories, transactions, goals, buckets, hints, insight, recap) = await
+        async let digestResult: (DailyDigest?, Bool) = fetchDigestAndReadState()
+        let (sources, accounts, categories, transactions, goals, buckets, hints, insight, recap, digestPair) = await
             (sourcesResult, accountsResult, categoriesResult, transactionsResult,
-             goalsResult, bucketsResult, hintsResult, insightResult, recapResult)
+             goalsResult, bucketsResult, hintsResult, insightResult, recapResult, digestResult)
 
         self.incomeSources = sources
         self.accounts = accounts
@@ -449,6 +468,8 @@ final class AppState {
         self.hintsLoaded = true
         self.dailyInsight = insight
         self.monthlyRecap = recap
+        self.todayDigest = digestPair.0
+        self.digestRead = digestPair.1
 
         await loadNudgesAndRecurring()
 
@@ -568,6 +589,29 @@ final class AppState {
             print("⚠️ MonthlyRecap fetch failed (continuing as nil): \(error)")
             #endif
             return nil
+        }
+    }
+
+    /// Fetches today's digest row + the user's read marker as a tuple.
+    /// Returns (nil, false) when no digest exists or fetch fails.
+    /// Returns (digest, true) when user has already marked it read.
+    /// Returns (digest, false) when digest exists but unread.
+    private func fetchDigestAndReadState() async -> (DailyDigest?, Bool) {
+        guard let userId = session?.user.id else { return (nil, false) }
+        do {
+            guard let digest = try await sikaDailyService.fetchTodayDigest() else {
+                return (nil, false)
+            }
+            let read = (try? await sikaDailyService.hasReadToday(
+                userId: userId,
+                digestDate: digest.digestDate
+            )) ?? false
+            return (digest, read)
+        } catch {
+            #if DEBUG
+            print("⚠️ DailyDigest fetch failed (continuing as nil): \(error)")
+            #endif
+            return (nil, false)
         }
     }
 
@@ -807,5 +851,23 @@ final class AppState {
             print("⚠️ markMonthlyRecapShared failed (silent): \(error)")
             #endif
         }
+    }
+
+    // MARK: - DailyDigest
+
+    /// Marks today's digest as read. Optimistic local update + idempotent
+    /// insert to user_daily_reads. No-op if already read or no digest loaded.
+    /// Wraps the local flip in `withAnimation` so the banner's transition
+    /// fires when shouldShowDailyDigestBanner flips false.
+    func markDigestRead() async {
+        guard let digest = todayDigest, !digestRead else { return }
+        withAnimation(.easeOut(duration: 0.2)) {
+            digestRead = true
+        }
+        guard let userId = session?.user.id else { return }
+        await sikaDailyService.markRead(
+            userId: userId,
+            digestDate: digest.digestDate
+        )
     }
 }
