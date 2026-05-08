@@ -1,15 +1,15 @@
 import SwiftUI
 
-/// Home dashboard. Phase 2 adds GoalsWidget + BucketStrip + RecentTransactions
-/// to Phase 1's chassis (top bar, cycle nav, heritage card, stat line, spend pair).
+/// Home dashboard. Phase 4 adds the dismissible hint system: 2 HintCards
+/// (`dashboard_card_intro` below CycleCard, `dashboard_buckets_intro` above
+/// BucketStrip) plus SundayRecapCard between SpendCardPair and GoalsWidget.
 /// Pull-to-refresh re-fetches all Home data sources in parallel.
 ///
 /// Deferred to later phases:
 /// - Phase 2.1: Goal progress derivation (current saved per goal)
-/// - Phase 3: Weekly chart (Apple Charts framework)
-/// - Phase 4: Tutorial cards / dismissible hints
 /// - Phase 5: Daily / Insight / Monthly banners
 /// - Phase 6: 6 more heritage themes
+/// - Phase 7+: income nudges, recurring cards, Should I Buy, gamification
 struct AuthenticatedHomeView: View {
     let profile: Profile
 
@@ -44,6 +44,13 @@ struct AuthenticatedHomeView: View {
                 )
                 .padding(.horizontal, SikaTheme.Spacing.lg)
 
+                HintCard(
+                    hintId: .dashboardCardIntro,
+                    title: "This is your month card",
+                    message: "It shows money that came in minus money that went out this month. Resets at the start of each month. Customize the style in Settings."
+                )
+                .padding(.horizontal, SikaTheme.Spacing.lg)
+
                 CycleStatLine(
                     received: SpendCalculator.cycleReceived(
                         transactions: appState.transactions,
@@ -71,6 +78,9 @@ struct AuthenticatedHomeView: View {
                     currencyCode: appState.currencyCode
                 )
 
+                SundayRecapCard()
+                    .padding(.horizontal, SikaTheme.Spacing.lg)
+
                 GoalsWidget(
                     goals: appState.topGoals,
                     currencyCode: appState.currencyCode,
@@ -78,6 +88,14 @@ struct AuthenticatedHomeView: View {
                         // Phase 2: no-op — /goals detail route ships later.
                     }
                 )
+
+                HintCard(
+                    hintId: .dashboardBucketsIntro,
+                    title: "How buckets work",
+                    message: "Your income is split 50/30/20 by default: Needs (must-haves like rent, food, transport), Wants (eating out, entertainment, gym), Savings (savings, investments, emergency fund). Customize the split in Settings.",
+                    cta: "Got it"
+                )
+                .padding(.horizontal, SikaTheme.Spacing.lg)
 
                 BucketStrip(
                     rows: BucketSpendCalculator.compute(

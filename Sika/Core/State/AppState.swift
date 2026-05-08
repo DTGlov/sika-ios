@@ -29,6 +29,13 @@ final class AppState {
     private(set) var pendingTransactions: [Transaction] = []
     private(set) var goals: [Goal] = []
     private(set) var budgetBuckets: [BudgetBucket] = []
+    /// Set of dismissed hint ids (raw strings, mirrors web's array + .includes()).
+    /// Stored as Set for O(1) `contains` checks. Populated by loadProfile.
+    private(set) var dismissedHints: Set<String> = []
+    /// Flips true after the first dismissed_hints fetch resolves (even when
+    /// the result is empty). HintCard gates its skeleton placeholder on this
+    /// to prevent the flash-then-hide on fresh sign-in.
+    private(set) var hintsLoaded: Bool = false
     private(set) var onboardingDismissedThisSession: Bool = false
 
     /// Cycle navigation: 0 = current cycle, -1 = previous, +1 = next (disallowed
@@ -43,6 +50,7 @@ final class AppState {
     private let transactionService: TransactionService
     private let goalService: GoalService
     private let budgetBucketService: BudgetBucketService
+    private let dismissedHintService: DismissedHintService
     private var authObserverTask: Task<Void, Never>?
 
     init(
@@ -53,7 +61,8 @@ final class AppState {
         categoryService: CategoryService = CategoryService(),
         transactionService: TransactionService = TransactionService(),
         goalService: GoalService = GoalService(),
-        budgetBucketService: BudgetBucketService = BudgetBucketService()
+        budgetBucketService: BudgetBucketService = BudgetBucketService(),
+        dismissedHintService: DismissedHintService = DismissedHintService()
     ) {
         self.authService = authService
         self.profileService = profileService
@@ -63,6 +72,7 @@ final class AppState {
         self.transactionService = transactionService
         self.goalService = goalService
         self.budgetBucketService = budgetBucketService
+        self.dismissedHintService = dismissedHintService
     }
 
     /// Active currency code from the authenticated profile, or "GHS" as fallback.
@@ -141,9 +151,10 @@ final class AppState {
         async let transactionsResult: [Transaction] = fetchTransactionsOrEmpty()
         async let goalsResult: [Goal] = fetchGoalsOrEmpty()
         async let bucketsResult: [BudgetBucket] = fetchBudgetBucketsOrEmpty()
-        let (sources, accounts, categories, transactions, goals, buckets) = await
+        async let hintsResult: [String] = fetchDismissedHintsOrEmpty()
+        let (sources, accounts, categories, transactions, goals, buckets, hints) = await
             (sourcesResult, accountsResult, categoriesResult, transactionsResult,
-             goalsResult, bucketsResult)
+             goalsResult, bucketsResult, hintsResult)
 
         self.incomeSources = sources
         self.accounts = accounts
@@ -151,6 +162,8 @@ final class AppState {
         self.transactions = transactions
         self.goals = goals
         self.budgetBuckets = buckets
+        self.dismissedHints = Set(hints)
+        self.hintsLoaded = true
     }
 
     /// Top 3 active goals by priority for GoalsWidget display.
@@ -334,9 +347,10 @@ final class AppState {
         async let transactionsResult: [Transaction] = fetchTransactionsOrEmpty()
         async let goalsResult: [Goal] = fetchGoalsOrEmpty()
         async let bucketsResult: [BudgetBucket] = fetchBudgetBucketsOrEmpty()
-        let (sources, accounts, categories, transactions, goals, buckets) = await
+        async let hintsResult: [String] = fetchDismissedHintsOrEmpty()
+        let (sources, accounts, categories, transactions, goals, buckets, hints) = await
             (sourcesResult, accountsResult, categoriesResult, transactionsResult,
-             goalsResult, bucketsResult)
+             goalsResult, bucketsResult, hintsResult)
 
         self.incomeSources = sources
         self.accounts = accounts
@@ -344,6 +358,8 @@ final class AppState {
         self.transactions = transactions
         self.goals = goals
         self.budgetBuckets = buckets
+        self.dismissedHints = Set(hints)
+        self.hintsLoaded = true
 
         flow = .authenticated(profile: profile)
 
@@ -421,5 +437,46 @@ final class AppState {
             #endif
             return []
         }
+    }
+
+    private func fetchDismissedHintsOrEmpty() async -> [String] {
+        do {
+            return try await dismissedHintService.fetchAll()
+        } catch {
+            #if DEBUG
+            print("⚠️ Dismissed hints fetch failed (continuing as empty): \(error)")
+            #endif
+            return []
+        }
+    }
+
+    // MARK: - Hint helpers
+
+    /// Whether a given hint has been dismissed.
+    /// Returns false until hintsLoaded is true (don't show pre-load).
+    func isDismissed(_ hintId: HintId) -> Bool {
+        dismissedHints.contains(hintId.rawValue)
+    }
+
+    /// Optimistically dismisses a hint. Updates local state immediately,
+    /// fires upsert to backend, ignores failures (matches web's no-rollback).
+    func dismissHint(_ hintId: HintId) async {
+        dismissedHints.insert(hintId.rawValue)
+        guard let userId = session?.user.id else { return }
+        do {
+            try await dismissedHintService.dismiss(userId: userId, hintId: hintId)
+        } catch {
+            #if DEBUG
+            print("⚠️ Dismiss hint upsert failed (silent, matches web): \(error)")
+            #endif
+        }
+    }
+
+    /// Deletes all dismissed hint rows for the user. Wired for a future Settings
+    /// "Reset onboarding hints" button — no UI consumer in Phase 4.
+    func resetHints() async throws {
+        try await dismissedHintService.resetAll()
+        dismissedHints.removeAll()
+        hintsLoaded = true
     }
 }
