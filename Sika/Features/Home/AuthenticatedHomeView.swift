@@ -24,6 +24,10 @@ struct AuthenticatedHomeView: View {
     /// as `navigatedRecap` — captures the digest at tap time so the detail
     /// view keeps it after AppState.digestRead flips.
     @State private var navigatedDigest: DailyDigest? = nil
+    /// Bound to NavigationStack push for CycleDetailView. Set when the user
+    /// taps the heritage CycleCard. Captures the currently-displayed cycle
+    /// (which may be the current cycle or a past one navigated via chevron).
+    @State private var navigatedCycle: Cycle? = nil
 
     var body: some View {
         ScrollView {
@@ -80,7 +84,8 @@ struct AuthenticatedHomeView: View {
                     ),
                     userName: profile.fullName,
                     theme: cardTheme,
-                    currencyCode: appState.currencyCode
+                    currencyCode: appState.currencyCode,
+                    onTap: { navigatedCycle = appState.currentCycle }
                 )
                 .padding(.horizontal, SikaTheme.Spacing.lg)
 
@@ -226,6 +231,9 @@ struct AuthenticatedHomeView: View {
                 isInitiallyRead: appState.digestRead,
                 onMarkRead: { await appState.markDigestRead() }
             )
+        }
+        .navigationDestination(item: $navigatedCycle) { cycle in
+            CycleDetailView(cycle: cycle)
         }
         .toolbar(.hidden, for: .navigationBar)
     }
