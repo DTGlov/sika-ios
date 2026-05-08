@@ -15,6 +15,11 @@ struct AuthenticatedHomeView: View {
 
     @Environment(AppState.self) private var appState
     @State private var isSettingsPresented = false
+    /// Bound to NavigationStack push for MonthlyRecapDetailView. The banner's
+    /// onTap sets this; the destination closure renders the detail page.
+    /// Keeping the recap as State (not just an id) so the detail keeps its
+    /// data even after AppState.monthlyRecap clears via markViewed.
+    @State private var navigatedRecap: MonthlyRecap? = nil
 
     var body: some View {
         ScrollView {
@@ -38,6 +43,17 @@ struct AuthenticatedHomeView: View {
                         insight: insightRow.insightData,
                         onDismiss: {
                             Task { await appState.dismissDailyInsight() }
+                        }
+                    )
+                    .padding(.horizontal, SikaTheme.Spacing.lg)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                if let recap = appState.monthlyRecap {
+                    MonthlyRecapBanner(
+                        onTap: { navigatedRecap = recap },
+                        onDismiss: {
+                            Task { await appState.dismissMonthlyRecap() }
                         }
                     )
                     .padding(.horizontal, SikaTheme.Spacing.lg)
@@ -180,6 +196,18 @@ struct AuthenticatedHomeView: View {
         .sheet(isPresented: $isSettingsPresented) {
             SettingsView()
         }
+        .navigationDestination(item: $navigatedRecap) { recap in
+            MonthlyRecapDetailView(
+                recap: recap,
+                onAppear: {
+                    Task { await appState.markMonthlyRecapViewed(recapId: recap.id) }
+                },
+                onShare: {
+                    Task { await appState.markMonthlyRecapShared(recapId: recap.id) }
+                }
+            )
+        }
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     /// Resolve the heritage theme for the cycle card from profile.cardTheme,

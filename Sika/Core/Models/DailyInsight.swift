@@ -23,7 +23,9 @@ enum InsightAccent: String, Codable, CaseIterable, Equatable {
 }
 
 /// Optional numeric callout (e.g. "Spent today: ₵42").
-struct InsightStat: Codable, Equatable {
+/// Reused by MonthlyCard.stat (Phase 5b). Hashable conformance is needed
+/// for MonthlyRecap to be navigable via `.navigationDestination(item:)`.
+struct InsightStat: Codable, Equatable, Hashable {
     let label: String
     let value: String
 }

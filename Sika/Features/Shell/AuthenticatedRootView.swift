@@ -12,7 +12,9 @@ struct AuthenticatedRootView: View {
             Group {
                 switch selectedTab {
                 case .home:
-                    AuthenticatedHomeView(profile: profile)
+                    NavigationStack {
+                        AuthenticatedHomeView(profile: profile)
+                    }
                 case .transactions:
                     TransactionsTabPlaceholder()
                 case .accounts:
