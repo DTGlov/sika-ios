@@ -62,6 +62,18 @@ final class AppState {
     private var hasGeneratedThisSession: Bool = false
     private(set) var onboardingDismissedThisSession: Bool = false
 
+    // MARK: - Phase 9 (gamification)
+
+    /// Composed health snapshot (score + streaks + momentum + badges).
+    /// Loaded on profile load + refresh; refreshed after every mutation
+    /// that affects score inputs.
+    private(set) var healthSnapshot: HealthSnapshot? = nil
+
+    /// Queue of badge unlocks awaiting the celebration sheet. Populated on
+    /// profile load (cross-platform handoff) and after mutation hooks
+    /// surface new unlocks. Head of the array drives the .fullScreenCover.
+    private(set) var unviewedBadgeUnlocks: [UserBadge] = []
+
     /// Cycle navigation: 0 = current cycle, -1 = previous, +1 = next (disallowed
     /// while on current). Per-session state; doesn't persist across launches.
     var cycleOffset: Int = 0
@@ -80,6 +92,10 @@ final class AppState {
     private let incomeNudgeService: IncomeNudgeService
     private let monthlyRecapService: MonthlyRecapService
     private let sikaDailyService: SikaDailyService
+    private let healthService: HealthService
+    private let streakService: StreakService
+    private let momentumService: MomentumService
+    private let badgeService: BadgeService
     private var authObserverTask: Task<Void, Never>?
 
     init(
@@ -96,7 +112,11 @@ final class AppState {
         recurringService: RecurringService = RecurringService(),
         incomeNudgeService: IncomeNudgeService = IncomeNudgeService(),
         monthlyRecapService: MonthlyRecapService = MonthlyRecapService(),
-        sikaDailyService: SikaDailyService = SikaDailyService()
+        sikaDailyService: SikaDailyService = SikaDailyService(),
+        healthService: HealthService = HealthService(),
+        streakService: StreakService = StreakService(),
+        momentumService: MomentumService = MomentumService(),
+        badgeService: BadgeService = BadgeService()
     ) {
         self.authService = authService
         self.profileService = profileService
@@ -112,6 +132,10 @@ final class AppState {
         self.incomeNudgeService = incomeNudgeService
         self.monthlyRecapService = monthlyRecapService
         self.sikaDailyService = sikaDailyService
+        self.healthService = healthService
+        self.streakService = streakService
+        self.momentumService = momentumService
+        self.badgeService = badgeService
     }
 
     /// Active currency code from the authenticated profile, or "GHS" as fallback.
@@ -223,6 +247,7 @@ final class AppState {
         self.digestRead = digestPair.1
 
         await loadNudgesAndRecurring()
+        await loadHealthSnapshot()
     }
 
     /// Phase-2 loader for income nudges + recurring auto-log + pending.
@@ -483,6 +508,8 @@ final class AppState {
         self.digestRead = digestPair.1
 
         await loadNudgesAndRecurring()
+        await loadHealthSnapshot()
+        await fireCycleEndedBadgeCheck()
 
         flow = .authenticated(profile: profile)
 
@@ -723,6 +750,8 @@ final class AppState {
                 incomeNudges.removeAll { $0.id == nudge.id }
             }
             await refreshHomeData()
+            // Phase 9: streak/momentum/badge hooks. Fire-and-forget.
+            Task { await fireTransactionLoggedHooks() }
         } catch {
             #if DEBUG
             print("⚠️ logIncomeNudge failed: \(error)")
@@ -790,6 +819,8 @@ final class AppState {
                 dueDate: dueDate
             )
             await refreshHomeData()
+            // Phase 9: streak/momentum/badge hooks. Fire-and-forget.
+            Task { await fireTransactionLoggedHooks() }
         } catch {
             #if DEBUG
             print("⚠️ confirmPendingRecurring failed: \(error)")
@@ -916,5 +947,91 @@ final class AppState {
             print("⚠️ updateCardTheme failed (rolled back): \(error)")
             #endif
         }
+    }
+
+    // MARK: - Phase 9 (gamification) — load + hooks
+
+    /// Whether the user has logged a transaction today. Drives HealthRow's
+    /// streak-chip pulse — pulses while loggingCurrent > 0 AND not yet
+    /// logged today.
+    var hasLoggedToday: Bool {
+        StreakEngine.hasLoggedToday(healthSnapshot?.streaks)
+    }
+
+    /// Loads the composed health snapshot. Side-effects:
+    /// - Populates `healthSnapshot`
+    /// - Enqueues any user_badges with celebration_shown=false
+    ///   (cross-platform handoff: badges unlocked on web auto-celebrate
+    ///    on the next iOS load)
+    private func loadHealthSnapshot() async {
+        guard let userId = session?.user.id else { return }
+        let snapshot = await healthService.fetchSnapshot(
+            userId: userId,
+            categories: categories,
+            budgetBuckets: budgetBuckets
+        )
+        self.healthSnapshot = snapshot
+
+        let pending = snapshot.userBadges
+            .filter { !$0.celebrationShown }
+            .sorted { $0.unlockedAt < $1.unlockedAt }
+        // Merge into queue without dropping anything already enqueued
+        for unlock in pending where !unviewedBadgeUnlocks.contains(where: { $0.id == unlock.id }) {
+            unviewedBadgeUnlocks.append(unlock)
+        }
+    }
+
+    /// On profile load, evaluate the cycle_ended trigger (safety_net check).
+    /// Mirror of web's dashboard-mount useEffect.
+    private func fireCycleEndedBadgeCheck() async {
+        guard let userId = session?.user.id else { return }
+        let unlocked = await badgeService.checkAndUnlock(userId: userId, trigger: .cycleEnded)
+        for badge in unlocked where !unviewedBadgeUnlocks.contains(where: { $0.id == badge.id }) {
+            unviewedBadgeUnlocks.append(badge)
+        }
+    }
+
+    /// Refresh the snapshot after a mutation. Called by mutation hooks.
+    /// Best-effort; on auth loss the snapshot stays stale.
+    func refreshHealthSnapshot() async {
+        await loadHealthSnapshot()
+    }
+
+    /// Mutation hook for user-initiated transaction creation.
+    /// Fires:
+    /// - logging streak update
+    /// - momentum: transaction_logged (+2) [+ logging_streak_7_days bonus on milestone]
+    /// - badge checks: transaction_logged + streak_updated
+    /// - snapshot refresh
+    ///
+    /// Fire-and-forget: never throws, never blocks the caller.
+    /// Auto-generated recurring transactions DO NOT call this — matches web.
+    func fireTransactionLoggedHooks() async {
+        guard let userId = session?.user.id else { return }
+
+        let streakResult = await streakService.updateLoggingStreak(userId: userId)
+        await momentumService.award(userId: userId, event: .transactionLogged)
+
+        if streakResult?.milestoneHit == 7 {
+            await momentumService.award(userId: userId, event: .loggingStreak7Days)
+        }
+
+        async let txnUnlocks = badgeService.checkAndUnlock(userId: userId, trigger: .transactionLogged)
+        async let streakUnlocks = streakResult != nil
+            ? badgeService.checkAndUnlock(userId: userId, trigger: .streakUpdated)
+            : []
+
+        let (txnNew, streakNew) = await (txnUnlocks, streakUnlocks)
+        for badge in txnNew + streakNew where !unviewedBadgeUnlocks.contains(where: { $0.id == badge.id }) {
+            unviewedBadgeUnlocks.append(badge)
+        }
+
+        await loadHealthSnapshot()
+    }
+
+    /// Dismiss the head of the celebration queue. Persists celebration_shown=true.
+    func dismissBadgeCelebration(_ badge: UserBadge) async {
+        unviewedBadgeUnlocks.removeAll { $0.id == badge.id }
+        await badgeService.markCelebrationShown(userBadgeId: badge.id)
     }
 }
