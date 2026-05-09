@@ -46,14 +46,21 @@ final class TransactionService {
     ) async throws -> (rows: [TransactionListRow], totalCount: Int) {
         let (orderColumn, ascending) = sortToColumn(filters.sort)
 
+        // PostgREST embed disambiguation: when a table has multiple FKs to the
+        // same target (here, transactions has both account_id AND
+        // from_account_id pointing at accounts), the column-name shorthand
+        // (`accounts!account_id`) doesn't always resolve. PGRST200 cache
+        // miss results. The fix is to reference the FK constraint name
+        // directly. Postgres default naming is `<table>_<column>_fkey`,
+        // which matches this project's schema.
         var query = client
             .from("transactions")
             .select(
                 """
                 *, \
                 category:categories(*, bucket:budget_buckets(*)), \
-                account:accounts!account_id(id,name,account_type,icon), \
-                from_account:accounts!from_account_id(id,name,account_type,icon)
+                account:accounts!transactions_account_id_fkey(id,name,account_type,icon), \
+                from_account:accounts!transactions_from_account_id_fkey(id,name,account_type,icon)
                 """,
                 head: false,
                 count: .exact
