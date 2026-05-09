@@ -239,7 +239,7 @@ struct TransactionsView: View {
                 let matchNote = (row.note ?? "").lowercased().contains(q)
                 let matchCat  = (row.category?.name ?? "").lowercased().contains(q)
                 let matchAcc  = (row.account?.name ?? "").lowercased().contains(q)
-                    || (row.fromAccount?.name ?? "").lowercased().contains(q)
+                    || (row.toAccount?.name ?? "").lowercased().contains(q)
                 let matchAmt: Bool = {
                     guard let qNum else { return false }
                     let absA = abs(NSDecimalNumber(decimal: row.amount).doubleValue)

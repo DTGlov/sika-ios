@@ -33,7 +33,7 @@ final class TransactionService {
     /// Returns rows + total count so the caller can drive "Load more".
     ///
     /// Server-side filters: period (date range), type, account
-    /// (account_id OR from_account_id), category, amount range.
+    /// (account_id OR to_account_id), category, amount range.
     /// Bucket filter is applied client-side by the caller — see audit doc.
     ///
     /// Mirror of web's loadTransactions (page.tsx).
@@ -47,12 +47,10 @@ final class TransactionService {
         let (orderColumn, ascending) = sortToColumn(filters.sort)
 
         // PostgREST embed disambiguation: when a table has multiple FKs to the
-        // same target (here, transactions has both account_id AND
-        // from_account_id pointing at accounts), the column-name shorthand
-        // (`accounts!account_id`) doesn't always resolve. PGRST200 cache
-        // miss results. The fix is to reference the FK constraint name
-        // directly. Postgres default naming is `<table>_<column>_fkey`,
-        // which matches this project's schema.
+        // same target (here, transactions has account_id AND to_account_id
+        // both pointing at accounts), the column-name shorthand doesn't
+        // resolve and the schema-cache lookup fails (PGRST200). Reference
+        // the FK constraints by name. Defaults follow Postgres naming.
         var query = client
             .from("transactions")
             .select(
@@ -60,7 +58,7 @@ final class TransactionService {
                 *, \
                 category:categories(*, bucket:budget_buckets(*)), \
                 account:accounts!transactions_account_id_fkey(id,name,account_type,icon), \
-                from_account:accounts!transactions_from_account_id_fkey(id,name,account_type,icon)
+                to_account:accounts!transactions_to_account_id_fkey(id,name,account_type,icon)
                 """,
                 head: false,
                 count: .exact
@@ -77,11 +75,10 @@ final class TransactionService {
             query = query.eq("type", value: type.rawValue)
         }
 
-        // Account filter covers both account_id (destination/main) and
-        // from_account_id (source for transfers) — matches web's pattern
-        // applied to iOS columns.
+        // Account filter covers both account_id (source) and to_account_id
+        // (destination for transfers).
         if let accountId = filters.accountId {
-            query = query.or("account_id.eq.\(accountId.uuidString),from_account_id.eq.\(accountId.uuidString)")
+            query = query.or("account_id.eq.\(accountId.uuidString),to_account_id.eq.\(accountId.uuidString)")
         }
 
         if let categoryId = filters.categoryId {

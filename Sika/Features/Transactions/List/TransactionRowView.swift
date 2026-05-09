@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Single row in the transactions list. Mirror of web's TransactionItem.
 /// Per-type rendering rules: expense (foreground), income (gold +),
-/// transfer (muted, "fromAccount → account"), adjustment (signed, gold/rose).
+/// transfer (muted, "account → toAccount"), adjustment (signed, gold/rose).
 struct TransactionRowView: View {
     let row: TransactionListRow
     let currencyCode: String
@@ -102,8 +102,8 @@ struct TransactionRowView: View {
     private var titleText: String {
         switch row.type {
         case .transfer:
-            let from = row.fromAccount?.name ?? "?"
-            let to = row.account?.name ?? "?"
+            let from = row.account?.name ?? "?"
+            let to = row.toAccount?.name ?? "?"
             return "\(from) → \(to)"
         case .adjustment:
             return "Balance adjustment"
@@ -274,7 +274,7 @@ struct TransactionRowView: View {
         if let note = row.note, !note.isEmpty { return note }
         switch row.type {
         case .transfer:
-            return "\(row.fromAccount?.name ?? "?") → \(row.account?.name ?? "?")"
+            return "\(row.account?.name ?? "?") → \(row.toAccount?.name ?? "?")"
         case .adjustment:
             return "Balance adjustment"
         case .expense, .income:

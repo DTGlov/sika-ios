@@ -758,7 +758,7 @@ final class AppState {
             type: .income,
             amount: nudge.incomeSource.amount,
             accountId: account.id,
-            fromAccountId: nil,
+            toAccountId: nil,
             categoryId: nil,
             transactionDate: today,
             note: nudge.incomeSource.name,

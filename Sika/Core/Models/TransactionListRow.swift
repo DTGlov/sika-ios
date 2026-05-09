@@ -4,19 +4,17 @@ import Foundation
 /// Decoded directly from PostgREST embeds — does NOT modify the existing
 /// `Transaction` model (other call sites rely on the simple shape).
 ///
-/// The web query joins `account` (via `account_id`) and `to_account`
-/// (via `to_account_id`); iOS schema uses `account_id` (destination/main)
-/// and `from_account_id` (source for transfers), so this model joins
-/// `account` + `fromAccount`.
+/// Schema (matches web): `account_id` is the source/FROM side; `to_account_id`
+/// is the destination/TO side for transfers. The list joins both.
 ///
-/// Transfer display: "fromAccount → account" (money flows source → dest).
+/// Transfer display: "account → toAccount" (money flows source → destination).
 struct TransactionListRow: Codable, Identifiable, Equatable {
     let id: UUID
     let userId: UUID
     let type: TransactionType
     let amount: Decimal
     let accountId: UUID
-    let fromAccountId: UUID?
+    let toAccountId: UUID?
     let categoryId: UUID?
     let goalId: UUID?
     let paidFromGoalId: UUID?
@@ -28,7 +26,7 @@ struct TransactionListRow: Codable, Identifiable, Equatable {
     // Joined relations (populated by fetchPage's nested select)
     let category: JoinedCategory?
     let account: JoinedAccount?
-    let fromAccount: JoinedAccount?
+    let toAccount: JoinedAccount?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -36,7 +34,7 @@ struct TransactionListRow: Codable, Identifiable, Equatable {
         case type
         case amount
         case accountId               = "account_id"
-        case fromAccountId           = "from_account_id"
+        case toAccountId             = "to_account_id"
         case categoryId              = "category_id"
         case goalId                  = "goal_id"
         case paidFromGoalId          = "paid_from_goal_id"
@@ -46,7 +44,7 @@ struct TransactionListRow: Codable, Identifiable, Equatable {
         case createdAt               = "created_at"
         case category
         case account
-        case fromAccount             = "from_account"
+        case toAccount               = "to_account"
     }
 }
 

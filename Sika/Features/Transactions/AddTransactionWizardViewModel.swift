@@ -137,7 +137,7 @@ final class AddTransactionWizardViewModel {
         let tempId = UUID()
 
         let accountId: UUID
-        let fromAccountId: UUID?
+        let toAccountId: UUID?
         let categoryId: UUID?
         let goalId: UUID?
 
@@ -146,15 +146,17 @@ final class AddTransactionWizardViewModel {
             guard let acc = selectedAccountId,
                   let cat = selectedCategoryId else { return nil }
             accountId = acc
-            fromAccountId = nil
+            toAccountId = nil
             categoryId = cat
             goalId = selectedGoalId  // always nil in 1B-2c
         case .transfer:
             guard let from = selectedFromAccountId,
                   let to = selectedToAccountId,
                   from != to else { return nil }
-            accountId = to        // destination
-            fromAccountId = from  // source
+            // Web's convention: account_id is the source/FROM, to_account_id
+            // is the destination/TO. Display is "account → toAccount".
+            accountId = from      // source
+            toAccountId = to      // destination
             categoryId = nil
             goalId = nil          // transfers never link to goals
         case .adjustment:
@@ -168,7 +170,7 @@ final class AddTransactionWizardViewModel {
             type: selectedType,
             amount: amount,
             accountId: accountId,
-            fromAccountId: fromAccountId,
+            toAccountId: toAccountId,
             categoryId: categoryId,
             transactionDate: dateString,
             note: noteValue,
@@ -181,7 +183,7 @@ final class AddTransactionWizardViewModel {
             type: selectedType,
             amount: amount,
             accountId: accountId,
-            fromAccountId: fromAccountId,
+            toAccountId: toAccountId,
             categoryId: categoryId,
             goalId: goalId,
             paidFromGoalId: nil,

@@ -5,8 +5,14 @@ struct Transaction: Codable, Identifiable, Equatable, Hashable {
     let userId: UUID
     let type: TransactionType
     let amount: Decimal
+    /// Source account for transfers; primary account for income/expense/adjustment.
+    /// Mirrors web's `account_id` semantics: this is the FROM side of a transfer.
     let accountId: UUID
-    let fromAccountId: UUID?
+    /// Destination account for transfers (NULL for non-transfers).
+    /// Maps to DB column `to_account_id`. iOS used to call this `fromAccountId`
+    /// with mapping `from_account_id` — that column doesn't exist; the field
+    /// always decoded to nil. Fixed in T1 follow-up.
+    let toAccountId: UUID?
     let categoryId: UUID?
     /// Set on TRANSFER rows that contribute TO a goal. The transfer's
     /// amount is what increased the goal's saved balance.
@@ -32,7 +38,7 @@ struct Transaction: Codable, Identifiable, Equatable, Hashable {
         case type
         case amount
         case accountId = "account_id"
-        case fromAccountId = "from_account_id"
+        case toAccountId = "to_account_id"
         case categoryId = "category_id"
         case goalId = "goal_id"
         case paidFromGoalId = "paid_from_goal_id"
@@ -57,8 +63,10 @@ struct TransactionDraft: Encodable {
     let userId: UUID
     let type: TransactionType
     let amount: Decimal
+    /// Source account (FROM side of transfers).
     let accountId: UUID
-    let fromAccountId: UUID?
+    /// Destination account (TO side of transfers; nil otherwise).
+    let toAccountId: UUID?
     let categoryId: UUID?
     let transactionDate: String
     let note: String?
@@ -69,7 +77,7 @@ struct TransactionDraft: Encodable {
         case type
         case amount
         case accountId = "account_id"
-        case fromAccountId = "from_account_id"
+        case toAccountId = "to_account_id"
         case categoryId = "category_id"
         case transactionDate = "transaction_date"
         case note
