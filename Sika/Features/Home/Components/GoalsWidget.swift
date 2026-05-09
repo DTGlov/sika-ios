@@ -1,10 +1,12 @@
 import SwiftUI
 
 /// Top 3 goals widget on Home. Hidden when no goals exist.
-/// Goal progress (current saved amount) ships in Phase 2.1; this widget
-/// renders progress bars at 0% for target goals.
+/// Each row shows the goal's net balance computed from the user's transactions
+/// (sum of transfers TO the goal minus expenses paid FROM the goal). Mirrors
+/// web's lib/goals.ts net pattern.
 struct GoalsWidget: View {
     let goals: [Goal]
+    let transactions: [Transaction]
     let currencyCode: String
     let onSeeAllTap: () -> Void
 
@@ -15,7 +17,14 @@ struct GoalsWidget: View {
             VStack(alignment: .leading, spacing: SikaTheme.Spacing.sm) {
                 header
                 ForEach(goals) { goal in
-                    GoalRow(goal: goal, currencyCode: currencyCode)
+                    GoalRow(
+                        goal: goal,
+                        current: GoalBalanceCalculator.netBalance(
+                            goalId: goal.id,
+                            transactions: transactions
+                        ),
+                        currencyCode: currencyCode
+                    )
                 }
             }
             .padding(.horizontal, SikaTheme.Spacing.lg)
@@ -41,6 +50,7 @@ struct GoalsWidget: View {
 
 private struct GoalRow: View {
     let goal: Goal
+    let current: Decimal
     let currencyCode: String
 
     var body: some View {
@@ -70,12 +80,9 @@ private struct GoalRow: View {
                     .foregroundStyle(SikaTheme.Color.foreground)
             }
 
-            // Progress bar (target only). Phase 2 hardcodes progress=0 because
-            // computing contributions per goal needs a dedicated aggregation
-            // (transactions where goalId == goal.id summed). Phase 2.1 follow-up.
             if goal.goalType == .target,
                let target = goal.targetAmount, target > 0 {
-                ProgressView(value: 0, total: 1)
+                ProgressView(value: progressFraction(target: target), total: 1)
                     .tint(SikaTheme.Color.sikaAccent)
                     .scaleEffect(x: 1, y: 1.5, anchor: .center)
             }
@@ -87,12 +94,19 @@ private struct GoalRow: View {
 
     private var amountText: String {
         if goal.goalType == .target, let target = goal.targetAmount {
-            // Phase 2: current is 0 (progress derivation deferred to Phase 2.1).
-            let current = CurrencyFormatter.compact(0, code: currencyCode)
-            let total = CurrencyFormatter.compact(target, code: currencyCode)
-            return "\(current) / \(total)"
+            let currentText = CurrencyFormatter.compact(current, code: currencyCode)
+            let totalText = CurrencyFormatter.compact(target, code: currencyCode)
+            return "\(currentText) / \(totalText)"
         }
-        // Perpetual: no target — show 0 placeholder until contributions land.
-        return CurrencyFormatter.compact(0, code: currencyCode)
+        return CurrencyFormatter.compact(current, code: currencyCode)
+    }
+
+    /// Progress fraction clamped to [0, 1]. Net can go negative if expenses
+    /// paid from the goal exceed contributions; we floor at 0 for the bar.
+    private func progressFraction(target: Decimal) -> Double {
+        let currentD = Double(truncating: current as NSNumber)
+        let targetD = Double(truncating: target as NSNumber)
+        guard targetD > 0 else { return 0 }
+        return max(0, min(1, currentD / targetD))
     }
 }

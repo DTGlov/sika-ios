@@ -132,6 +132,12 @@ struct AuthenticatedHomeView: View {
                 SundayRecapCard()
                     .padding(.horizontal, SikaTheme.Spacing.lg)
 
+                HealthRow(
+                    snapshot: appState.healthSnapshot,
+                    hasLoggedToday: appState.hasLoggedToday
+                )
+                .padding(.horizontal, SikaTheme.Spacing.lg)
+
                 if !appState.incomeNudges.isEmpty || !appState.visiblePendingRecurring.isEmpty {
                     VStack(spacing: 8) {
                         ForEach(appState.incomeNudges) { nudge in
@@ -159,6 +165,7 @@ struct AuthenticatedHomeView: View {
 
                 GoalsWidget(
                     goals: appState.topGoals,
+                    transactions: appState.transactions,
                     currencyCode: appState.currencyCode,
                     onSeeAllTap: {
                         // Phase 2: no-op — /goals detail route ships later.
@@ -241,7 +248,23 @@ struct AuthenticatedHomeView: View {
         .navigationDestination(item: $navigatedCycle) { cycle in
             CycleDetailView(cycle: cycle)
         }
+        .fullScreenCover(item: nextBadgeCelebration) { badge in
+            BadgeCelebrationSheet(
+                userBadge: badge,
+                onDismiss: { await appState.dismissBadgeCelebration(badge) }
+            )
+        }
         .toolbar(.hidden, for: .navigationBar)
+    }
+
+    /// Binding to the head of the badge-celebration queue. Reading the head
+    /// drives the .fullScreenCover; the setter is a no-op (the cover never
+    /// dismisses itself externally — only via dismissBadgeCelebration).
+    private var nextBadgeCelebration: Binding<UserBadge?> {
+        Binding(
+            get: { appState.unviewedBadgeUnlocks.first },
+            set: { _ in }
+        )
     }
 
     /// Resolve the heritage theme for the cycle card from profile.cardTheme,

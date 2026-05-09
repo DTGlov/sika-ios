@@ -109,6 +109,10 @@ struct AddTransactionWizardView: View {
             }()
             AnalyticsService.shared.capture(.transactionLogged(type: analyticsType, bucket: nil))
 
+            // Phase 9: streak/momentum/badge hooks. Fire-and-forget so the
+            // wizard's success animation isn't blocked.
+            Task { await appState.fireTransactionLoggedHooks() }
+
             viewModel.submitState = .succeeded
 
             showSavedToast = true

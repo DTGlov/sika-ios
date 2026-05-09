@@ -15,7 +15,11 @@ struct Goal: Identifiable, Codable, Equatable, Hashable {
     let color: String?
     let goalType: GoalType
     let targetAmount: Decimal?
-    let deadline: Date?
+    /// YYYY-MM-DD string (Supabase `date` column has no time component, so the
+    /// SDK's default ISO8601 strategy can't decode it as `Date`). Parse on
+    /// demand at the comparison site with DateFormatter("yyyy-MM-dd").
+    /// Mirrors how Transaction.transactionDate is modeled.
+    let deadline: String?
     let accountId: UUID?
     let priority: Int?
     let archived: Bool?
