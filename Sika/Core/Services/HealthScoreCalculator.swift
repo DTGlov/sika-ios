@@ -531,26 +531,32 @@ final class HealthScoreCalculator {
         return response.value
     }
 
-    /// Net contributions to a goal. On schema mismatch / missing table, returns 0.
+    /// Net balance for a goal. Mirror of web's lib/goals.ts net pattern.
+    /// Reads the transactions table (NOT a separate goal_contributions table —
+    /// iOS encodes the relationship via Transaction.goal_id and
+    /// .paid_from_goal_id columns).
+    ///
+    /// net = sum(amount where goal_id = G) - sum(amount where paid_from_goal_id = G)
     private func fetchGoalNet(goalId: UUID) async throws -> Decimal {
         struct Row: Codable {
             let amount: Decimal
-            let type: String?
         }
-        let response: PostgrestResponse<[Row]> = try await client
-            .from("goal_contributions")
-            .select("amount, type")
+
+        let inflowsResponse: PostgrestResponse<[Row]> = try await client
+            .from("transactions")
+            .select("amount")
             .eq("goal_id", value: goalId)
             .execute()
-        var net: Decimal = 0
-        for row in response.value {
-            if (row.type ?? "contribution") == "withdrawal" {
-                net -= row.amount
-            } else {
-                net += row.amount
-            }
-        }
-        return net
+
+        let outflowsResponse: PostgrestResponse<[Row]> = try await client
+            .from("transactions")
+            .select("amount")
+            .eq("paid_from_goal_id", value: goalId)
+            .execute()
+
+        let inflowSum = inflowsResponse.value.reduce(Decimal(0)) { $0 + $1.amount }
+        let outflowSum = outflowsResponse.value.reduce(Decimal(0)) { $0 + $1.amount }
+        return inflowSum - outflowSum
     }
 
     // MARK: - Helpers

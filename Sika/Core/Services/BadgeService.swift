@@ -200,27 +200,29 @@ final class BadgeService {
         return Double(truncating: lsBalance as NSNumber) >= 3.0 * Double(truncating: monthlyNeeds as NSNumber)
     }
 
-    /// Net contributions to a goal. Reads goal_contributions; degrades to 0
-    /// on schema mismatch / missing table.
+    /// Net balance for a goal. Mirror of web's lib/goals.ts net pattern.
+    /// Reads the transactions table directly via goal_id and paid_from_goal_id
+    /// columns (NOT a separate goal_contributions table).
     private func sumGoalContributions(goalId: UUID) async throws -> Decimal {
         struct Row: Codable {
             let amount: Decimal
-            let type: String?
         }
-        let response: PostgrestResponse<[Row]> = try await client
-            .from("goal_contributions")
-            .select("amount, type")
+
+        let inflowsResponse: PostgrestResponse<[Row]> = try await client
+            .from("transactions")
+            .select("amount")
             .eq("goal_id", value: goalId)
             .execute()
-        var net: Decimal = 0
-        for row in response.value {
-            if (row.type ?? "contribution") == "withdrawal" {
-                net -= row.amount
-            } else {
-                net += row.amount
-            }
-        }
-        return net
+
+        let outflowsResponse: PostgrestResponse<[Row]> = try await client
+            .from("transactions")
+            .select("amount")
+            .eq("paid_from_goal_id", value: goalId)
+            .execute()
+
+        let inflowSum = inflowsResponse.value.reduce(Decimal(0)) { $0 + $1.amount }
+        let outflowSum = outflowsResponse.value.reduce(Decimal(0)) { $0 + $1.amount }
+        return inflowSum - outflowSum
     }
 
     /// Avg Needs spend across the last 3 completed cycles.

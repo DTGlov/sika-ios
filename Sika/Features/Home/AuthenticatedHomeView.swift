@@ -165,6 +165,7 @@ struct AuthenticatedHomeView: View {
 
                 GoalsWidget(
                     goals: appState.topGoals,
+                    transactions: appState.transactions,
                     currencyCode: appState.currencyCode,
                     onSeeAllTap: {
                         // Phase 2: no-op — /goals detail route ships later.
