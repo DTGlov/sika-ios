@@ -317,9 +317,15 @@ final class HealthScoreCalculator {
         let today = Date()
         let cal = Calendar.current
 
+        let deadlineFormatter = DateFormatter()
+        deadlineFormatter.dateFormat = "yyyy-MM-dd"
+        deadlineFormatter.locale = Locale(identifier: "en_US_POSIX")
+        deadlineFormatter.timeZone = .current
+
         for (goal, net) in amounts {
             guard let target = goal.targetAmount, target > 0,
-                  let deadline = goal.deadline
+                  let deadlineStr = goal.deadline,
+                  let deadline = deadlineFormatter.date(from: deadlineStr)
             else { continue }
             let createdAt = goal.createdAt
 
@@ -448,7 +454,8 @@ final class HealthScoreCalculator {
         let id: UUID
         let name: String
         let targetAmount: Decimal?
-        let deadline: Date?
+        /// YYYY-MM-DD string (Supabase `date` column). Parsed on demand.
+        let deadline: String?
         let createdAt: Date
         let completedAt: Date?
 
