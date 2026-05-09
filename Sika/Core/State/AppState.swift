@@ -89,6 +89,18 @@ final class AppState {
     /// surface new unlocks. Head of the array drives the .fullScreenCover.
     private(set) var unviewedBadgeUnlocks: [UserBadge] = []
 
+    // MARK: - Phase T1 (Transactions tab)
+
+    /// Joined transaction rows for the Transactions tab list.
+    /// Distinct from `transactions` (the simple array used by Home/scoring).
+    private(set) var transactionsList: [TransactionListRow] = []
+    var transactionFilters = TransactionFilters()
+    private(set) var transactionsPage: Int = 0
+    private(set) var transactionsHasMore: Bool = false
+    private(set) var transactionsTotalCount: Int = 0
+    private(set) var transactionsLoading: Bool = false
+    private(set) var transactionsLoadingMore: Bool = false
+
     /// Cycle navigation: 0 = current cycle, -1 = previous, +1 = next (disallowed
     /// while on current). Per-session state; doesn't persist across launches.
     var cycleOffset: Int = 0
@@ -1337,6 +1349,80 @@ final class AppState {
         } catch {
             #if DEBUG
             print("⚠️ deleteAccount failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    // MARK: - Phase T1 (Transactions tab) — load + delete
+
+    /// Load the first page of transactions with current filters.
+    /// Resets pagination state.
+    func loadFirstTransactionsPage() async {
+        guard let userId = session?.user.id else { return }
+        transactionsLoading = true
+        transactionsPage = 0
+        do {
+            let result = try await transactionService.fetchPage(
+                userId: userId,
+                filters: transactionFilters,
+                cycleStartDay: profileCycleStartDay,
+                page: 0
+            )
+            transactionsList = result.rows
+            transactionsTotalCount = result.totalCount
+            transactionsHasMore = transactionsList.count < result.totalCount
+        } catch {
+            #if DEBUG
+            print("⚠️ loadFirstTransactionsPage failed: \(error)")
+            #endif
+            transactionsList = []
+            transactionsHasMore = false
+            transactionsTotalCount = 0
+        }
+        transactionsLoading = false
+    }
+
+    /// Load the next page (manual "Load more" button).
+    func loadMoreTransactions() async {
+        guard !transactionsLoadingMore, transactionsHasMore else { return }
+        guard let userId = session?.user.id else { return }
+        transactionsLoadingMore = true
+        let nextPage = transactionsPage + 1
+        do {
+            let result = try await transactionService.fetchPage(
+                userId: userId,
+                filters: transactionFilters,
+                cycleStartDay: profileCycleStartDay,
+                page: nextPage
+            )
+            transactionsList.append(contentsOf: result.rows)
+            transactionsTotalCount = result.totalCount
+            transactionsHasMore = transactionsList.count < result.totalCount
+            transactionsPage = nextPage
+        } catch {
+            #if DEBUG
+            print("⚠️ loadMoreTransactions failed: \(error)")
+            #endif
+        }
+        transactionsLoadingMore = false
+    }
+
+    /// Hard delete a transaction. Removes from the local list optimistically
+    /// (with animation) and reconciles the count. No undo. Mirror of web's
+    /// confirm-then-delete + revalidate flow.
+    @discardableResult
+    func deleteTransactionFromList(_ id: UUID) async -> Bool {
+        do {
+            try await transactionService.deleteTransaction(id: id)
+            withAnimation(.easeOut(duration: 0.2)) {
+                transactionsList.removeAll { $0.id == id }
+            }
+            transactionsTotalCount = max(0, transactionsTotalCount - 1)
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ deleteTransactionFromList failed: \(error)")
             #endif
             return false
         }
