@@ -1208,4 +1208,137 @@ final class AppState {
             category: rec.category
         )
     }
+
+    // MARK: - Phase S1 (Settings) — actions
+
+    /// Sum of monthlyEquivalent across active income sources. Used by
+    /// the Budget Split GHS preview and Total Monthly Income echo card.
+    var totalMonthlyIncomeComputed: Decimal {
+        incomeSources.filter(\.isActive)
+            .reduce(Decimal(0)) { $0 + $1.monthlyEquivalent }
+    }
+
+    /// Apply the given theme to the active UIWindow.
+    /// Affects every view immediately. Called both on theme change and
+    /// once at app launch (via RootView's onAppear).
+    func applySystemTheme(_ theme: SystemTheme) {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+        for window in scene.windows {
+            window.overrideUserInterfaceStyle = theme.uiUserInterfaceStyle
+        }
+    }
+
+    /// Optimistic theme update. Applies to UIWindow + persists via HTTP/Bearer.
+    func updateSystemTheme(_ theme: SystemTheme) async {
+        guard case .authenticated(let profile) = flow else { return }
+        let previous = profile.themePreference
+
+        withAnimation(.easeOut(duration: 0.2)) {
+            self.flow = .authenticated(profile: profile.withThemePreference(theme.rawValue))
+        }
+        applySystemTheme(theme)
+
+        do {
+            try await profileService.updateTheme(theme)
+        } catch {
+            #if DEBUG
+            print("⚠️ updateSystemTheme failed (rolled back): \(error)")
+            #endif
+            if case .authenticated(let current) = flow {
+                self.flow = .authenticated(profile: current.withThemePreference(previous))
+                if let restored = SystemTheme(rawValue: previous) {
+                    applySystemTheme(restored)
+                }
+            }
+        }
+    }
+
+    /// Optimistic haptics toggle. Persists via HTTP/Bearer.
+    func updateHapticsEnabled(_ enabled: Bool) async {
+        guard case .authenticated(let profile) = flow else { return }
+        let previous = profile.hapticsEnabled
+
+        self.flow = .authenticated(profile: profile.withHapticsEnabled(enabled))
+
+        do {
+            try await profileService.updateHaptics(enabled)
+        } catch {
+            #if DEBUG
+            print("⚠️ updateHapticsEnabled failed (rolled back): \(error)")
+            #endif
+            if case .authenticated(let current) = flow {
+                self.flow = .authenticated(profile: current.withHapticsEnabled(previous ?? true))
+            }
+        }
+    }
+
+    /// Update currency. Non-optimistic — caller awaits the round-trip.
+    /// Returns true on success.
+    @discardableResult
+    func updateCurrency(_ code: String) async -> Bool {
+        guard case .authenticated(let profile) = flow else { return false }
+        do {
+            try await profileService.updateCurrency(code)
+            self.flow = .authenticated(profile: profile.withCurrency(code))
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ updateCurrency failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    /// Save Budget Month + Budget Split together. Direct Supabase write.
+    /// Caller is responsible for sum-validates-100 guard at the form layer.
+    @discardableResult
+    func saveBudgetConfig(
+        cycleStartDay: Int,
+        needsPercent: Decimal,
+        wantsPercent: Decimal,
+        savingsPercent: Decimal
+    ) async -> Bool {
+        guard case .authenticated(let profile) = flow else { return false }
+        guard let userId = session?.user.id else { return false }
+        do {
+            try await profileService.updateBudgetConfig(
+                userId: userId,
+                cycleStartDay: cycleStartDay,
+                needsPercent: needsPercent,
+                wantsPercent: wantsPercent,
+                savingsPercent: savingsPercent
+            )
+            self.flow = .authenticated(profile: profile.withBudgetConfig(
+                cycleStartDay: cycleStartDay,
+                needsPercent: needsPercent,
+                wantsPercent: wantsPercent,
+                savingsPercent: savingsPercent
+            ))
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ saveBudgetConfig failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    /// Hard-deletes the user account via the cascade endpoint. Returns true
+    /// on success — caller should follow with sign-out flow.
+    @discardableResult
+    func deleteAccount() async -> Bool {
+        do {
+            try await profileService.deleteAccount()
+            // Server-side cascade kills the auth user; signOut clears local.
+            try? await authService.signOut()
+            self.session = nil
+            self.flow = .signIn
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ deleteAccount failed: \(error)")
+            #endif
+            return false
+        }
+    }
 }
