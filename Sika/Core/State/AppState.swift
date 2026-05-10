@@ -101,6 +101,16 @@ final class AppState {
     private(set) var transactionsLoading: Bool = false
     private(set) var transactionsLoadingMore: Bool = false
 
+    // MARK: - Goals tab state (Phase Goals T1)
+
+    /// Composed goal-progress snapshots for the Goals tab. Keyed by goal id.
+    /// `goalsList` holds the raw goals; `goalsProgressMap` holds the
+    /// derived currentAmount + pace + status. Both refresh together via
+    /// `loadGoalsList()`.
+    private(set) var goalsList: [Goal] = []
+    private(set) var goalsProgressMap: [UUID: GoalProgress] = [:]
+    private(set) var goalsLoading: Bool = false
+
     /// Cycle navigation: 0 = current cycle, -1 = previous, +1 = next (disallowed
     /// while on current). Per-session state; doesn't persist across launches.
     var cycleOffset: Int = 0
@@ -322,7 +332,7 @@ final class AppState {
     /// Top 3 active goals by priority for GoalsWidget display.
     var topGoals: [Goal] {
         goals
-            .filter { $0.archived != true }
+            .filter { $0.isArchived != true }
             .sorted { ($0.priority ?? Int.max) < ($1.priority ?? Int.max) }
             .prefix(3)
             .map { $0 }
@@ -1425,6 +1435,234 @@ final class AppState {
             print("⚠️ deleteTransactionFromList failed: \(error)")
             #endif
             return false
+        }
+    }
+
+    // MARK: - Goals tab — segments + actions
+
+    /// Active goals (completed_at == nil), sorted by priority asc.
+    var activeGoals: [GoalProgress] {
+        goalsList
+            .filter { $0.completedAt == nil }
+            .sorted { ($0.priority ?? Int.max) < ($1.priority ?? Int.max) }
+            .compactMap { goalsProgressMap[$0.id] }
+    }
+
+    /// Completed goals, newest completion first.
+    var completedGoals: [GoalProgress] {
+        goalsList
+            .filter { $0.completedAt != nil }
+            .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+            .compactMap { goalsProgressMap[$0.id] }
+    }
+
+    /// Total saved across all active goals — for the list page header sub-line.
+    var totalSavedAcrossActiveGoals: Decimal {
+        activeGoals.reduce(Decimal(0)) { $0 + $1.currentAmount }
+    }
+
+    /// Load all goals + compute per-goal progress in parallel.
+    /// Refreshes `goalsList` + `goalsProgressMap` atomically.
+    func loadGoalsList() async {
+        guard let userId = session?.user.id else { return }
+        goalsLoading = true
+        defer { goalsLoading = false }
+
+        let service = GoalService()
+        do {
+            let goals = try await service.fetchAll(userId: userId)
+            let accountsById: [UUID: Account] = Dictionary(
+                uniqueKeysWithValues: accounts.map { ($0.id, $0) }
+            )
+
+            // Fetch each goal's amounts in parallel.
+            var progressMap: [UUID: GoalProgress] = [:]
+            await withTaskGroup(of: (UUID, GoalProgress)?.self) { group in
+                for goal in goals {
+                    group.addTask {
+                        let amounts: (contributions: Decimal, payments: Decimal, net: Decimal) =
+                            (try? await service.fetchAmounts(goalId: goal.id))
+                            ?? (contributions: 0, payments: 0, net: 0)
+                        let acc = goal.fundingAccountId.flatMap { accountsById[$0] }
+                        let joined = acc.map {
+                            JoinedAccountRef(
+                                id: $0.id,
+                                name: $0.name,
+                                accountType: $0.accountType,
+                                icon: $0.icon
+                            )
+                        }
+                        let progress = GoalEngine.computeProgress(
+                            goal: goal,
+                            currentAmount: amounts.net,
+                            fundingAccount: joined
+                        )
+                        return (goal.id, progress)
+                    }
+                }
+                for await pair in group {
+                    if let (id, p) = pair { progressMap[id] = p }
+                }
+            }
+
+            goalsList = goals
+            goalsProgressMap = progressMap
+        } catch {
+            #if DEBUG
+            print("⚠️ loadGoalsList failed: \(error)")
+            #endif
+        }
+    }
+
+    /// Contribute to a goal. Inserts a transfer transaction with goal_id,
+    /// auto-completes if the target was hit, and fires the savings-streak
+    /// + momentum + badge mutation chain (Phase 9 helpers).
+    ///
+    /// Returns true on success. Errors are swallowed in DEBUG only —
+    /// callers display toasts on the boolean.
+    @discardableResult
+    func contributeToGoal(
+        goal: Goal,
+        fromAccountId: UUID,
+        amount: Decimal,
+        note: String?,
+        transactionDate: String
+    ) async -> Bool {
+        guard let userId = session?.user.id else { return false }
+        let progress = goalsProgressMap[goal.id]
+        let currentAmount: Decimal = progress?.currentAmount ?? 0
+
+        let service = GoalService()
+        do {
+            _ = try await service.contribute(
+                userId: userId,
+                goal: goal,
+                fromAccountId: fromAccountId,
+                amount: amount,
+                note: note,
+                transactionDate: transactionDate,
+                currentAmount: currentAmount
+            )
+
+            // Mutation chain (Phase 9 hooks). Fire-and-forget within this
+            // method — wait for completion so loadGoalsList sees fresh state,
+            // but never throw out of the chain.
+            await streakService.updateSavingsStreak(userId: userId)
+            await momentumService.award(userId: userId, event: .goalContribution)
+
+            async let contribUnlocks = badgeService.checkAndUnlock(
+                userId: userId,
+                trigger: .contributionMade
+            )
+            async let streakUnlocks = badgeService.checkAndUnlock(
+                userId: userId,
+                trigger: .streakUpdated
+            )
+            let (cNew, sNew) = await (contribUnlocks, streakUnlocks)
+            for badge in cNew + sNew where !unviewedBadgeUnlocks.contains(where: { $0.id == badge.id }) {
+                unviewedBadgeUnlocks.append(badge)
+            }
+
+            // Refresh: pulls new amounts + auto-completion + score recompute.
+            await loadGoalsList()
+            await refreshHealthSnapshot()
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ contributeToGoal failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    @discardableResult
+    func archiveGoal(_ id: UUID) async -> Bool {
+        let service = GoalService()
+        do {
+            try await service.archive(id: id)
+            goalsList.removeAll { $0.id == id }
+            goalsProgressMap.removeValue(forKey: id)
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ archiveGoal failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    @discardableResult
+    func deleteGoal(_ id: UUID) async -> Bool {
+        let service = GoalService()
+        do {
+            try await service.delete(id: id)
+            goalsList.removeAll { $0.id == id }
+            goalsProgressMap.removeValue(forKey: id)
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ deleteGoal failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    @discardableResult
+    func createGoal(payload: GoalService.CreatePayload) async -> Goal? {
+        let service = GoalService()
+        do {
+            let goal = try await service.create(payload: payload)
+            await loadGoalsList()
+            return goal
+        } catch {
+            #if DEBUG
+            print("⚠️ createGoal failed: \(error)")
+            #endif
+            return nil
+        }
+    }
+
+    @discardableResult
+    func updateGoal(id: UUID, payload: GoalService.UpdatePayload) async -> Goal? {
+        let service = GoalService()
+        do {
+            let goal = try await service.update(id: id, payload: payload)
+            await loadGoalsList()
+            return goal
+        } catch {
+            #if DEBUG
+            print("⚠️ updateGoal failed: \(error)")
+            #endif
+            return nil
+        }
+    }
+
+    @discardableResult
+    func startNextGoalCycle(
+        completedGoal: Goal,
+        name: String,
+        targetAmount: Decimal,
+        deadline: String,
+        priority: Int
+    ) async -> Goal? {
+        guard let userId = session?.user.id else { return nil }
+        let service = GoalService()
+        do {
+            let newGoal = try await service.createNextCycle(
+                userId: userId,
+                completedGoal: completedGoal,
+                name: name,
+                targetAmount: targetAmount,
+                deadline: deadline,
+                priority: priority
+            )
+            await loadGoalsList()
+            return newGoal
+        } catch {
+            #if DEBUG
+            print("⚠️ startNextGoalCycle failed: \(error)")
+            #endif
+            return nil
         }
     }
 }
