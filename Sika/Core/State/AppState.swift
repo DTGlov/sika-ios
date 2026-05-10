@@ -62,6 +62,21 @@ final class AppState {
     private var hasGeneratedThisSession: Bool = false
     private(set) var onboardingDismissedThisSession: Bool = false
 
+    // MARK: - Recurring tab state
+
+    enum RecurringTab: String, CaseIterable, Identifiable {
+        case expense, paused
+        var id: String { rawValue }
+    }
+
+    /// All active recurrings (joined account + category) for the user.
+    /// Tab segmentation is computed client-side via `expenseRecurrings` /
+    /// `pausedRecurrings`.
+    private(set) var recurringList: [RecurringTransaction] = []
+    var recurringTab: RecurringTab = .expense
+    private(set) var recurringLoading: Bool = false
+    private(set) var recurringSyncing: Bool = false
+
     // MARK: - Phase 9 (gamification)
 
     /// Composed health snapshot (score + streaks + momentum + badges).
@@ -1033,5 +1048,164 @@ final class AppState {
     func dismissBadgeCelebration(_ badge: UserBadge) async {
         unviewedBadgeUnlocks.removeAll { $0.id == badge.id }
         await badgeService.markCelebrationShown(userBadgeId: badge.id)
+    }
+
+    // MARK: - Recurring tab — segments + actions
+
+    /// Active expense recurrings, sorted by next due date asc.
+    var expenseRecurrings: [RecurringTransaction] {
+        recurringList
+            .filter { $0.type == .expense && !$0.isPaused }
+            .sorted { lhs, rhs in
+                let a = RecurringDateMath.nextDueDate(for: lhs, from: Date())?.timeIntervalSince1970 ?? .infinity
+                let b = RecurringDateMath.nextDueDate(for: rhs, from: Date())?.timeIntervalSince1970 ?? .infinity
+                return a < b
+            }
+    }
+
+    /// All paused recurrings (any type), most-recently-updated first.
+    var pausedRecurrings: [RecurringTransaction] {
+        recurringList
+            .filter { $0.isPaused }
+            .sorted { ($0.updatedAt ?? Date.distantPast) > ($1.updatedAt ?? Date.distantPast) }
+    }
+
+    /// Load all recurrings (joined fetch).
+    func loadRecurrings() async {
+        guard let userId = session?.user.id else { return }
+        recurringLoading = true
+        do {
+            recurringList = try await recurringService.fetchAll(userId: userId)
+        } catch {
+            #if DEBUG
+            print("⚠️ loadRecurrings failed: \(error)")
+            #endif
+            recurringList = []
+        }
+        recurringLoading = false
+    }
+
+    /// Optimistic pause/resume. Reverts the in-memory flag on error so the UI
+    /// stays consistent with the server.
+    func togglePaused(_ recurring: RecurringTransaction) async {
+        let newValue = !recurring.isPaused
+        // Optimistic
+        if let idx = recurringList.firstIndex(where: { $0.id == recurring.id }) {
+            recurringList[idx] = recurringWith(recurringList[idx], isPaused: newValue)
+        }
+        do {
+            try await recurringService.setPaused(id: recurring.id, isPaused: newValue)
+        } catch {
+            // Revert
+            if let idx = recurringList.firstIndex(where: { $0.id == recurring.id }) {
+                recurringList[idx] = recurringWith(recurringList[idx], isPaused: recurring.isPaused)
+            }
+            #if DEBUG
+            print("⚠️ togglePaused failed: \(error)")
+            #endif
+        }
+    }
+
+    /// Soft delete. Caller should drive the confirmation alert; this method
+    /// just performs the write + local removal.
+    @discardableResult
+    func deleteRecurring(_ id: UUID) async -> Bool {
+        do {
+            try await recurringService.softDelete(id: id)
+            recurringList.removeAll { $0.id == id }
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ deleteRecurring failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    /// Manual sync trigger. Spins the icon while running; reloads on success.
+    func syncRecurringNow() async {
+        guard let userId = session?.user.id else { return }
+        recurringSyncing = true
+        do {
+            try await recurringService.syncNow(userId: userId)
+            await loadRecurrings()
+        } catch {
+            #if DEBUG
+            print("⚠️ syncRecurringNow failed: \(error)")
+            #endif
+        }
+        recurringSyncing = false
+    }
+
+    /// Detail-page "Log this instance now". No mutation hooks fire here.
+    @discardableResult
+    func logRecurringInstanceNow(
+        _ recurring: RecurringTransaction,
+        dueDate: String
+    ) async -> Bool {
+        guard let userId = session?.user.id else { return false }
+        do {
+            try await recurringService.logInstanceNow(
+                userId: userId,
+                recurring: recurring,
+                dueDate: dueDate
+            )
+            await loadRecurrings()
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ logRecurringInstanceNow failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    /// Detail-page "Skip this period".
+    @discardableResult
+    func skipRecurringPeriod(
+        _ recurring: RecurringTransaction,
+        dueDate: String
+    ) async -> Bool {
+        do {
+            try await recurringService.skipPeriod(recurringId: recurring.id, dueDate: dueDate)
+            await loadRecurrings()
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ skipRecurringPeriod failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    /// Reload after a form-sheet save (create or update).
+    func reloadRecurringsAfterFormSave() async {
+        await loadRecurrings()
+    }
+
+    /// Constructs a copy of a RecurringTransaction with a single field flipped.
+    /// All struct fields are `let`, so we rebuild via the synthesized memberwise init.
+    private func recurringWith(_ rec: RecurringTransaction, isPaused: Bool) -> RecurringTransaction {
+        RecurringTransaction(
+            id: rec.id,
+            userId: rec.userId,
+            accountId: rec.accountId,
+            categoryId: rec.categoryId,
+            type: rec.type,
+            amount: rec.amount,
+            note: rec.note,
+            frequency: rec.frequency,
+            startDate: rec.startDate,
+            endDate: rec.endDate,
+            scheduleDay: rec.scheduleDay,
+            autoLog: rec.autoLog,
+            lastGeneratedDate: rec.lastGeneratedDate,
+            isActive: rec.isActive,
+            isPaused: isPaused,
+            createdAt: rec.createdAt,
+            updatedAt: rec.updatedAt,
+            account: rec.account,
+            category: rec.category
+        )
     }
 }
