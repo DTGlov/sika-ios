@@ -19,6 +19,13 @@ struct RootView: View {
                     .sheet(isPresented: shouldPresentOnboardingBinding) {
                         OnboardingSheet()
                     }
+                    .onAppear {
+                        // Apply user's theme preference to the active UIWindow.
+                        // Re-applied here (not just on toggle) so a fresh launch
+                        // honors the persisted choice before any flash of the
+                        // wrong scheme.
+                        appState.applySystemTheme(profile.themePreferenceValue)
+                    }
             }
         }
         .background(SikaTheme.Color.background)

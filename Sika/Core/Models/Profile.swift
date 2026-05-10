@@ -58,19 +58,67 @@ struct Profile: Codable, Identifiable, Equatable {
     /// Used by AppState's optimistic update path — Profile fields are `let`,
     /// so mutation requires constructing a new instance.
     func withCardTheme(_ value: String) -> Profile {
-        Profile(
-            id: id,
-            fullName: fullName,
+        copy(cardTheme: value)
+    }
+
+    /// Returns a copy with `themePreference` replaced.
+    func withThemePreference(_ value: String) -> Profile {
+        copy(themePreference: value)
+    }
+
+    /// Returns a copy with `hapticsEnabled` replaced.
+    func withHapticsEnabled(_ value: Bool) -> Profile {
+        copy(hapticsEnabled: value)
+    }
+
+    /// Returns a copy with `currency` replaced.
+    func withCurrency(_ value: String) -> Profile {
+        copy(currency: value)
+    }
+
+    /// Returns a copy with the budget config (cycle start + 3 percentages) replaced.
+    func withBudgetConfig(
+        cycleStartDay: Int,
+        needsPercent: Decimal,
+        wantsPercent: Decimal,
+        savingsPercent: Decimal
+    ) -> Profile {
+        copy(
             monthlyIncome: monthlyIncome,
-            currency: currency,
             needsPercent: needsPercent,
             wantsPercent: wantsPercent,
             savingsPercent: savingsPercent,
-            cycleStartDay: cycleStartDay,
-            cardTheme: value,
-            themePreference: themePreference,
-            hapticsEnabled: hapticsEnabled,
-            accountsBannerDismissed: accountsBannerDismissed,
+            cycleStartDay: cycleStartDay
+        )
+    }
+
+    /// Internal copy helper. Each parameter optional with current-value default.
+    private func copy(
+        fullName: String?? = nil,
+        monthlyIncome: Decimal?? = nil,
+        currency: String? = nil,
+        needsPercent: Decimal?? = nil,
+        wantsPercent: Decimal?? = nil,
+        savingsPercent: Decimal?? = nil,
+        cycleStartDay: Int?? = nil,
+        cardTheme: String? = nil,
+        themePreference: String? = nil,
+        hapticsEnabled: Bool?? = nil,
+        accountsBannerDismissed: Bool? = nil
+    ) -> Profile {
+        Profile(
+            id: id,
+            fullName: fullName ?? self.fullName,
+            monthlyIncome: monthlyIncome ?? self.monthlyIncome,
+            currency: currency ?? self.currency,
+            needsPercent: needsPercent ?? self.needsPercent,
+            wantsPercent: wantsPercent ?? self.wantsPercent,
+            savingsPercent: savingsPercent ?? self.savingsPercent,
+            cycleStartDay: cycleStartDay ?? self.cycleStartDay,
+            cardTheme: cardTheme ?? self.cardTheme,
+            themePreference: themePreference ?? self.themePreference,
+            hapticsEnabled: hapticsEnabled ?? self.hapticsEnabled,
+            accountsBannerDismissed: accountsBannerDismissed ?? self.accountsBannerDismissed,
             createdAt: createdAt,
             updatedAt: updatedAt
         )
