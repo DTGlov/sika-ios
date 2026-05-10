@@ -29,7 +29,7 @@ enum TransactionType: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// Whether this type uses from_account_id (i.e. is a transfer).
+    /// Whether this type uses to_account_id (i.e. is a transfer).
     var isTransfer: Bool { self == .transfer }
 
     /// Tint color for chips and accents.

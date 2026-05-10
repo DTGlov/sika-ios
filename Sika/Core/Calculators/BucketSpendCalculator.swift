@@ -92,10 +92,10 @@ enum BucketSpendCalculator {
             // come from a savings/investment account. Internal savings
             // shuffles (savings → savings, investment → investment) are
             // skipped — no new money entered the savings sphere.
-            // Per iOS transfer convention: accountId = destination,
-            // fromAccountId = source.
-            let toType = accountTypeById[tx.accountId]
-            let fromType = tx.fromAccountId.flatMap { accountTypeById[$0] }
+            // Per web's convention: accountId = source (FROM),
+            // toAccountId = destination (TO).
+            let fromType = accountTypeById[tx.accountId]
+            let toType = tx.toAccountId.flatMap { accountTypeById[$0] }
 
             guard let toType, AccountType.savingsLike.contains(toType) else { continue }
 

@@ -19,7 +19,7 @@ struct AuthenticatedRootView: View {
                         )
                     }
                 case .transactions:
-                    TransactionsTabPlaceholder()
+                    TransactionsView()
                 case .accounts:
                     AccountsTabPlaceholder()
                 case .goals:
