@@ -113,7 +113,7 @@ struct RecurringFormSheet: View {
     private var accountField: some View {
         FieldLabel("Account") {
             Menu {
-                ForEach(accounts.filter { $0.archived != true }) { account in
+                ForEach(accounts.filter { $0.isActive != false }) { account in
                     Button {
                         accountId = account.id
                     } label: {

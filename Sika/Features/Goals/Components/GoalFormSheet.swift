@@ -265,7 +265,7 @@ struct GoalFormSheet: View {
                 .font(SikaTheme.Typography.sans(12, weight: .semibold))
                 .foregroundStyle(SikaTheme.Color.foreground)
             Menu {
-                ForEach(accounts.filter { $0.archived != true }) { account in
+                ForEach(accounts.filter { $0.isActive != false }) { account in
                     Button {
                         fundingAccountId = account.id
                     } label: {
@@ -357,7 +357,7 @@ struct GoalFormSheet: View {
             priority = g.priority ?? 5
         } else {
             // Default funding account on create: first non-archived account.
-            fundingAccountId = accounts.first(where: { $0.archived != true })?.id
+            fundingAccountId = accounts.first(where: { $0.isActive != false })?.id
         }
     }
 

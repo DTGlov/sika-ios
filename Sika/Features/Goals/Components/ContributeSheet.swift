@@ -29,7 +29,7 @@ struct ContributeSheet: View {
     }
 
     private var fromAccounts: [Account] {
-        appState.accounts.filter { $0.archived != true && $0.id != goal.fundingAccountId }
+        appState.accounts.filter { $0.isActive != false && $0.id != goal.fundingAccountId }
     }
 
     private var currentAmount: Decimal { progress?.currentAmount ?? 0 }

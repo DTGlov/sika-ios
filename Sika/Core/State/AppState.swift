@@ -57,6 +57,12 @@ final class AppState {
     /// Income-typed rules are filtered at the view boundary via
     /// `visiblePendingRecurring`.
     private(set) var pendingRecurring: [PendingRecurring] = []
+
+    // MARK: - Phase Accounts T1 — derived balances
+
+    /// account.id → derived balance, computed via AccountBalanceEngine.
+    /// Recomputed after any account or transaction mutation.
+    private(set) var accountsBalances: [UUID: Decimal] = [:]
     /// Once-per-session guard for the auto_log=true silent generation pass.
     /// Mirrors web's useRef-based "have we run this yet" check.
     private var hasGeneratedThisSession: Bool = false
@@ -1663,6 +1669,200 @@ final class AppState {
             print("⚠️ startNextGoalCycle failed: \(error)")
             #endif
             return nil
+        }
+    }
+
+    // MARK: - Accounts tab — balance + CRUD + reconcile
+
+    /// Total balance across active accounts. Used by the Accounts tab header.
+    var totalActiveBalance: Decimal {
+        accounts
+            .filter { $0.isActive != false }
+            .reduce(Decimal(0)) { $0 + AccountBalanceEngine.balance(for: $1, in: accountsBalances) }
+    }
+
+    /// Recompute the per-account balance map. Pulls all transactions for the
+    /// current user (minimal field set) and folds via AccountBalanceEngine.
+    /// Best-effort: errors leave the map unchanged.
+    func recomputeAccountBalances() async {
+        guard let userId = session?.user.id else { return }
+        do {
+            let allTransactions = try await transactionService.fetchAllForBalances(userId: userId)
+            self.accountsBalances = AccountBalanceEngine.compute(
+                accounts: accounts,
+                transactions: allTransactions
+            )
+        } catch {
+            #if DEBUG
+            print("⚠️ recomputeAccountBalances failed: \(error)")
+            #endif
+        }
+    }
+
+    /// Reload the accounts list. Reuses the existing fetch helper.
+    func reloadAccountsAndBalances() async {
+        let fresh = await fetchAccountsOrEmpty()
+        self.accounts = fresh
+        await recomputeAccountBalances()
+    }
+
+    /// Create a new account with single-default enforcement and first-account
+    /// auto-default (fix-on-way for web TBD #4).
+    /// Returns the created Account on success.
+    @discardableResult
+    func createAccount(
+        name: String,
+        type: AccountType,
+        openingBalance: Decimal,
+        isDefault userIsDefault: Bool
+    ) async -> Account? {
+        guard let userId = session?.user.id else { return nil }
+        let service = AccountService()
+
+        let isFirstAccount = accounts.filter { $0.isActive != false }.isEmpty
+        let effectiveDefault = isFirstAccount || userIsDefault
+
+        do {
+            // Step 1: clear other defaults if this one will be default
+            if effectiveDefault {
+                try await service.clearAllDefaults(userId: userId)
+            }
+
+            // Step 2: insert
+            let cfg = AccountTypeConfigs.config(for: type)
+            let payload = AccountService.AccountInsert(
+                user_id: userId,
+                name: name,
+                account_type: type.rawValue,
+                icon: cfg.emoji,                  // dead-write
+                color: cfg.hexString,             // dead-write
+                opening_balance: openingBalance,
+                is_default: effectiveDefault,
+                is_active: true,
+                sort_order: accounts.count + 1
+            )
+            let created = try await service.create(payload: payload)
+
+            // Step 3: refresh local state — get updated default flags across rows
+            await reloadAccountsAndBalances()
+            return created
+        } catch {
+            #if DEBUG
+            print("⚠️ createAccount failed: \(error)")
+            #endif
+            return nil
+        }
+    }
+
+    /// Update an existing account.
+    @discardableResult
+    func updateAccount(
+        id: UUID,
+        name: String,
+        type: AccountType,
+        openingBalance: Decimal,
+        isDefault: Bool,
+        isActive: Bool
+    ) async -> Account? {
+        guard let userId = session?.user.id else { return nil }
+        let service = AccountService()
+
+        let existing = accounts.first(where: { $0.id == id })
+
+        do {
+            // Single-default enforcement: only clear others if this update
+            // is promoting the row to default (was false, now true).
+            if isDefault, existing?.isDefault != true {
+                try await service.clearAllDefaults(userId: userId)
+            }
+
+            let cfg = AccountTypeConfigs.config(for: type)
+            let payload = AccountService.AccountUpdate(
+                name: name,
+                account_type: type.rawValue,
+                icon: cfg.emoji,
+                color: cfg.hexString,
+                opening_balance: openingBalance,
+                is_default: isDefault,
+                is_active: isActive
+            )
+            let updated = try await service.update(id: id, payload: payload)
+            await reloadAccountsAndBalances()
+            return updated
+        } catch {
+            #if DEBUG
+            print("⚠️ updateAccount failed: \(error)")
+            #endif
+            return nil
+        }
+    }
+
+    /// Inline reconcile (from the Edit modal expander). Inserts an adjustment
+    /// transaction for the diff and refreshes balances.
+    ///
+    /// TODO (Phase 9.5b): port `awardMomentum(.accountReconciled)` and
+    /// `checkAndUnlockBadges(.accountReconciled)` here AND in the standalone
+    /// reconcile sheet. Both reconcile paths should fire the same chain.
+    @discardableResult
+    func reconcileAccountInline(
+        accountId: UUID,
+        sikaBalance: Decimal,
+        actualBalance: Decimal
+    ) async -> Bool {
+        guard let userId = session?.user.id else { return false }
+        let service = AccountService()
+        do {
+            try await service.insertReconcileAdjustment(
+                userId: userId,
+                accountId: accountId,
+                sikaBalance: sikaBalance,
+                actualBalance: actualBalance
+            )
+            await recomputeAccountBalances()
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ reconcileAccountInline failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    /// Pre-delete count. Caller uses this to decide between confirm-only
+    /// flow (count == 0) and reassign overlay flow (count > 0).
+    func countTransactionsForAccount(_ accountId: UUID) async -> Int {
+        let service = AccountService()
+        do {
+            return try await service.countTransactionsReferencingAccountId(accountId)
+        } catch {
+            return 0
+        }
+    }
+
+    /// Delete an account. If `reassignTo` is non-nil, transactions referencing
+    /// the source account_id are bulk-updated first. FK errors on
+    /// goals.funding_account_id, recurring_transactions.account_id, or
+    /// transactions.to_account_id surface as a thrown error → false return.
+    @discardableResult
+    func deleteAccountWithReassign(
+        _ id: UUID,
+        reassignTo targetId: UUID?
+    ) async -> Bool {
+        let service = AccountService()
+        do {
+            if let target = targetId {
+                try await service.reassignTransactions(from: id, to: target)
+            }
+            try await service.delete(id: id)
+            self.accounts.removeAll { $0.id == id }
+            self.accountsBalances.removeValue(forKey: id)
+            await recomputeAccountBalances()
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ deleteAccountWithReassign failed: \(error)")
+            #endif
+            return false
         }
     }
 }

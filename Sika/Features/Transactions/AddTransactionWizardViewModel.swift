@@ -105,13 +105,13 @@ final class AddTransactionWizardViewModel {
     /// Filtered accounts for transfer From picker.
     /// Excludes archived accounts AND the To-selected account.
     func availableFromAccounts(_ all: [Account]) -> [Account] {
-        all.filter { $0.archived != true && $0.id != selectedToAccountId }
+        all.filter { $0.isActive != false && $0.id != selectedToAccountId }
     }
 
     /// Filtered accounts for transfer To picker.
     /// Excludes archived accounts AND the From-selected account.
     func availableToAccounts(_ all: [Account]) -> [Account] {
-        all.filter { $0.archived != true && $0.id != selectedFromAccountId }
+        all.filter { $0.isActive != false && $0.id != selectedFromAccountId }
     }
 
     // MARK: - Step 3 / Save logic
