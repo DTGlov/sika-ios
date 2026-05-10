@@ -101,6 +101,18 @@ final class TransactionService {
         return (response.value, response.count ?? 0)
     }
 
+    /// Fetch ALL transactions for the user (no date filter, no pagination).
+    /// Used by `AccountBalanceEngine` — minimal field set for performance.
+    /// Matches web's pattern of pulling all rows on every balance refresh.
+    func fetchAllForBalances(userId: UUID) async throws -> [Transaction] {
+        let response: PostgrestResponse<[Transaction]> = try await client
+            .from("transactions")
+            .select()
+            .eq("user_id", value: userId)
+            .execute()
+        return response.value
+    }
+
     /// Hard delete. No soft-delete column on web; iOS mirrors.
     func deleteTransaction(id: UUID) async throws {
         try await client

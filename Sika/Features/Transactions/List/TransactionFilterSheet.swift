@@ -61,7 +61,7 @@ struct TransactionFilterSheet: View {
             ChipButton(label: "All accounts", isActive: filters.accountId == nil) {
                 filters.accountId = nil
             }
-            ForEach(accounts.filter { $0.archived != true }) { account in
+            ForEach(accounts.filter { $0.isActive != false }) { account in
                 ChipButton(label: account.name, isActive: filters.accountId == account.id) {
                     filters.accountId = account.id
                 }

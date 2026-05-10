@@ -21,7 +21,9 @@ struct AuthenticatedRootView: View {
                 case .transactions:
                     TransactionsView()
                 case .accounts:
-                    AccountsTabPlaceholder()
+                    NavigationStack {
+                        AccountsView()
+                    }
                 case .goals:
                     NavigationStack {
                         GoalsView()

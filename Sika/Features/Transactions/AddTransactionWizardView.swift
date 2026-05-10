@@ -261,11 +261,11 @@ private struct SaveButton: View {
 
 private func previewAccounts() -> [Account] {
     [
-        previewAccount(name: "🏦 Bank", type: .general),
-        previewAccount(name: "👛 Hubtel wallet", type: .wallet),
-        previewAccount(name: "📱 MTN MoMo Wallet", type: .other),
+        previewAccount(name: "🏦 Bank", type: .bank),
+        previewAccount(name: "👛 Hubtel wallet", type: .other),
+        previewAccount(name: "📱 MTN MoMo Wallet", type: .momo),
         previewAccount(name: "🐷 Savings", type: .savings),
-        previewAccount(name: "📱 Telecel Cash", type: .other),
+        previewAccount(name: "📱 Telecel Cash", type: .momo),
         previewAccount(name: "💵 Physical Cash", type: .cash)
     ]
 }
@@ -273,7 +273,8 @@ private func previewAccounts() -> [Account] {
 private func previewAccount(name: String, type: AccountType) -> Account {
     Account(
         id: UUID(), userId: UUID(), name: name, accountType: type,
-        icon: nil, balance: 1000, isDefault: false, archived: false,
+        icon: nil, color: nil, openingBalance: 1000,
+        isDefault: false, isActive: true, sortOrder: 0,
         createdAt: nil, updatedAt: nil
     )
 }

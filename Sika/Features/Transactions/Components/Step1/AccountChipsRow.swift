@@ -81,12 +81,12 @@ private struct AccountChip: View {
 
     private static func fallbackEmoji(for type: AccountType) -> String {
         switch type {
-        case .general: return "🏦"
-        case .wallet: return "👛"
+        case .bank: return "🏦"
+        case .momo: return "📱"
         case .cash: return "💵"
         case .savings: return "🐷"
         case .investment: return "📈"
-        case .other: return "📱"
+        case .other: return "👛"
         }
     }
 }
