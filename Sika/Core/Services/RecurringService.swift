@@ -156,4 +156,107 @@ final class RecurringService {
             .eq("id", value: recurringId)
             .execute()
     }
+
+    // MARK: - Phase REC_1 (Recurring tab) — list + CRUD + sync + log/skip
+
+    /// List ALL active recurrings (paused or unpaused) for the user, with
+    /// joined account + category. Tab segmentation is client-side.
+    func fetchAll(userId: UUID) async throws -> [RecurringTransaction] {
+        // FK constraint shorthand on `recurring_transactions` resolves cleanly
+        // (only one FK to accounts via account_id; one to categories via
+        // category_id) — no PGRST200 disambiguation needed here.
+        let response: PostgrestResponse<[RecurringTransaction]> = try await client
+            .from("recurring_transactions")
+            .select(
+                """
+                *, \
+                account:accounts!account_id(id,name,account_type,icon), \
+                category:categories!category_id(id,name,icon,category_type,bucket:budget_buckets(id,name))
+                """
+            )
+            .eq("user_id", value: userId)
+            .eq("is_active", value: true)
+            .execute()
+        return response.value
+    }
+
+    /// Insert a new recurring. New rows ship with type=expense per audit's
+    /// "no income picker for new rows" rule.
+    func create(payload: RecurringPayload) async throws -> RecurringTransaction {
+        let response: PostgrestResponse<RecurringTransaction> = try await client
+            .from("recurring_transactions")
+            .insert(payload)
+            .select()
+            .single()
+            .execute()
+        return response.value
+    }
+
+    /// Update an existing row.
+    func update(id: UUID, payload: RecurringPayload) async throws -> RecurringTransaction {
+        let response: PostgrestResponse<RecurringTransaction> = try await client
+            .from("recurring_transactions")
+            .update(payload)
+            .eq("id", value: id)
+            .select()
+            .single()
+            .execute()
+        return response.value
+    }
+
+    func setPaused(id: UUID, isPaused: Bool) async throws {
+        struct Row: Encodable { let is_paused: Bool }
+        try await client
+            .from("recurring_transactions")
+            .update(Row(is_paused: isPaused))
+            .eq("id", value: id)
+            .execute()
+    }
+
+    /// Soft delete. is_active = false. Already-generated transactions kept.
+    func softDelete(id: UUID) async throws {
+        struct Row: Encodable { let is_active: Bool }
+        try await client
+            .from("recurring_transactions")
+            .update(Row(is_active: false))
+            .eq("id", value: id)
+            .execute()
+    }
+
+    /// Manual sync — runs the existing engine's auto-log generation pass.
+    func syncNow(userId: UUID, today: Date = Date()) async throws {
+        _ = try await generateAndCollectPending(userId: userId, today: today)
+    }
+
+    /// Detail-page "Log this instance now" — alias of confirmPending. Inserts
+    /// a transaction without firing streak/momentum/badge hooks (matches web).
+    func logInstanceNow(
+        userId: UUID,
+        recurring: RecurringTransaction,
+        dueDate: String
+    ) async throws {
+        try await confirmPending(userId: userId, recurring: recurring, dueDate: dueDate)
+    }
+
+    /// Detail-page "Skip this period" — alias of skipPending.
+    func skipPeriod(recurringId: UUID, dueDate: String) async throws {
+        try await skipPending(recurringId: recurringId, dueDate: dueDate)
+    }
+}
+
+/// Insert / update payload for the Recurring form.
+/// Mirrors the recurring_transactions row shape used by web's API.
+struct RecurringPayload: Encodable {
+    let user_id: UUID
+    let type: TransactionType
+    let amount: Decimal
+    let account_id: UUID
+    let category_id: UUID?
+    let note: String?
+    let frequency: RecurringFrequency
+    let schedule_day: Int?
+    let start_date: String
+    let end_date: String?
+    let auto_log: Bool
+    let is_paused: Bool
 }

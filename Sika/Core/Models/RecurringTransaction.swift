@@ -19,7 +19,7 @@ enum RecurringFrequency: String, Codable, CaseIterable, Equatable {
 ///
 /// last_generated_date is the "I handled this" signal. After confirm or skip,
 /// bumps forward to prevent re-prompt for the same period.
-struct RecurringTransaction: Codable, Identifiable, Equatable {
+struct RecurringTransaction: Codable, Identifiable, Equatable, Hashable {
     let id: UUID
     let userId: UUID
     let accountId: UUID
@@ -37,6 +37,12 @@ struct RecurringTransaction: Codable, Identifiable, Equatable {
     let isPaused: Bool
     let createdAt: Date?
     let updatedAt: Date?
+
+    /// Joined via PostgREST embed by RecurringService.fetchAll.
+    /// Nil for fetches that don't request the embed (e.g. dueRecurring).
+    let account: JoinedAccountRef?
+    /// Joined via PostgREST embed by RecurringService.fetchAll.
+    let category: JoinedCategoryRef?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -56,6 +62,8 @@ struct RecurringTransaction: Codable, Identifiable, Equatable {
         case isPaused           = "is_paused"
         case createdAt          = "created_at"
         case updatedAt          = "updated_at"
+        case account
+        case category
     }
 }
 

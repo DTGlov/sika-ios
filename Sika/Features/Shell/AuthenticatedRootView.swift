@@ -25,7 +25,9 @@ struct AuthenticatedRootView: View {
                 case .goals:
                     GoalsTabPlaceholder()
                 case .recurring:
-                    RecurringTabPlaceholder()
+                    NavigationStack {
+                        RecurringView()
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
