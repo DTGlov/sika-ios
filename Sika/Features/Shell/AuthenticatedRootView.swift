@@ -23,7 +23,9 @@ struct AuthenticatedRootView: View {
                 case .accounts:
                     AccountsTabPlaceholder()
                 case .goals:
-                    GoalsTabPlaceholder()
+                    NavigationStack {
+                        GoalsView()
+                    }
                 case .recurring:
                     NavigationStack {
                         RecurringView()
