@@ -31,6 +31,10 @@ struct AuthenticatedHomeView: View {
     /// taps the heritage CycleCard. Captures the currently-displayed cycle
     /// (which may be the current cycle or a past one navigated via chevron).
     @State private var navigatedCycle: Cycle? = nil
+    /// Phase 9.5a — bound to NavigationStack push for HealthDetailView.
+    /// Set by the HealthRow tap; reads live data from `appState.healthSnapshot`
+    /// (the destination doesn't need any captured state, just the toggle).
+    @State private var showHealthDetail: Bool = false
 
     var body: some View {
         ScrollView {
@@ -132,10 +136,15 @@ struct AuthenticatedHomeView: View {
                 SundayRecapCard()
                     .padding(.horizontal, SikaTheme.Spacing.lg)
 
-                HealthRow(
-                    snapshot: appState.healthSnapshot,
-                    hasLoggedToday: appState.hasLoggedToday
-                )
+                Button {
+                    showHealthDetail = true
+                } label: {
+                    HealthRow(
+                        snapshot: appState.healthSnapshot,
+                        hasLoggedToday: appState.hasLoggedToday
+                    )
+                }
+                .buttonStyle(.plain)
                 .padding(.horizontal, SikaTheme.Spacing.lg)
 
                 if !appState.incomeNudges.isEmpty || !appState.visiblePendingRecurring.isEmpty {
@@ -247,6 +256,9 @@ struct AuthenticatedHomeView: View {
         }
         .navigationDestination(item: $navigatedCycle) { cycle in
             CycleDetailView(cycle: cycle)
+        }
+        .navigationDestination(isPresented: $showHealthDetail) {
+            HealthDetailView()
         }
         .fullScreenCover(item: nextBadgeCelebration) { badge in
             BadgeCelebrationSheet(
