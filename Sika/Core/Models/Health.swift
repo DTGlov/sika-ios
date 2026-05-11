@@ -209,6 +209,25 @@ struct Momentum: Codable, Equatable {
     }
 }
 
+/// Append-only row in the momentum_events table; one per awarded action.
+/// MomentumService inserts via an inline Encodable struct; this Decodable
+/// struct is the read-side counterpart used by the /momentum history list.
+struct MomentumEvent: Identifiable, Codable, Equatable {
+    let id: UUID
+    let userId: UUID
+    let eventType: MomentumEventType
+    let points: Int
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId    = "user_id"
+        case eventType = "event_type"
+        case points
+        case createdAt = "created_at"
+    }
+}
+
 // MARK: - Badges
 
 enum BadgeRarity: String, Codable, Equatable {
