@@ -15,7 +15,8 @@ struct AuthenticatedRootView: View {
                     NavigationStack {
                         AuthenticatedHomeView(
                             profile: profile,
-                            onSwitchToTransactions: { selectedTab = .transactions }
+                            onSwitchToTransactions: { selectedTab = .transactions },
+                            onSwitchToTab: { selectedTab = $0 }
                         )
                     }
                 case .transactions:
