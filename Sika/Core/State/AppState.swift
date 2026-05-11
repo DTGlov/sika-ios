@@ -1370,6 +1370,114 @@ final class AppState {
         }
     }
 
+    // MARK: - Phase S2 (Settings → Income Sources) — CRUD + syncMonthlyIncome
+
+    /// Create a new income source. After the row is inserted, fires
+    /// `syncMonthlyIncome` so `profiles.monthly_income` (and the local
+    /// `profile.monthlyIncome` cache) reflect the new aggregate.
+    /// Phase 9's HealthRow reads this field — the sync is mandatory.
+    @discardableResult
+    func createIncomeSource(
+        name: String,
+        amount: Decimal,
+        frequency: IncomeFrequency,
+        expectedDay: Int?,
+        icon: String?,
+        accountId: UUID?,
+        isActive: Bool = true
+    ) async -> Bool {
+        guard let userId = session?.user.id else { return false }
+        do {
+            let payload = IncomeService.IncomeSourcePayload(
+                user_id: userId,
+                name: name,
+                amount: amount,
+                frequency: frequency.rawValue,
+                expected_day: expectedDay,
+                icon: icon,
+                account_id: accountId,
+                is_active: isActive
+            )
+            let row = try await incomeService.create(payload: payload)
+            incomeSources.append(row)
+            try await incomeService.syncMonthlyIncome(userId: userId, sources: incomeSources)
+            syncLocalProfileMonthlyIncome()
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ createIncomeSource failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    /// Update an existing income source. Fires `syncMonthlyIncome` on success.
+    @discardableResult
+    func updateIncomeSource(
+        id: UUID,
+        name: String,
+        amount: Decimal,
+        frequency: IncomeFrequency,
+        expectedDay: Int?,
+        icon: String?,
+        accountId: UUID?,
+        isActive: Bool
+    ) async -> Bool {
+        guard let userId = session?.user.id else { return false }
+        do {
+            let payload = IncomeService.IncomeSourcePayload(
+                user_id: userId,
+                name: name,
+                amount: amount,
+                frequency: frequency.rawValue,
+                expected_day: expectedDay,
+                icon: icon,
+                account_id: accountId,
+                is_active: isActive
+            )
+            let row = try await incomeService.update(id: id, payload: payload)
+            if let idx = incomeSources.firstIndex(where: { $0.id == id }) {
+                incomeSources[idx] = row
+            }
+            try await incomeService.syncMonthlyIncome(userId: userId, sources: incomeSources)
+            syncLocalProfileMonthlyIncome()
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ updateIncomeSource failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    /// Hard delete an income source. Fires `syncMonthlyIncome` on success.
+    @discardableResult
+    func deleteIncomeSource(_ id: UUID) async -> Bool {
+        guard let userId = session?.user.id else { return false }
+        do {
+            try await incomeService.delete(id: id)
+            incomeSources.removeAll { $0.id == id }
+            try await incomeService.syncMonthlyIncome(userId: userId, sources: incomeSources)
+            syncLocalProfileMonthlyIncome()
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ deleteIncomeSource failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    /// Recompute the aggregate from `incomeSources` and stamp the result onto
+    /// the local profile cache. Called after a successful `syncMonthlyIncome`
+    /// so the UI reflects the new monthly income without a profile refetch.
+    private func syncLocalProfileMonthlyIncome() {
+        guard case .authenticated(let profile) = flow else { return }
+        let total = incomeSources.filter(\.isActive)
+            .reduce(Decimal(0)) { $0 + $1.monthlyEquivalent }
+        flow = .authenticated(profile: profile.withMonthlyIncome(total))
+    }
+
     // MARK: - Phase T1 (Transactions tab) — load + delete
 
     /// Load the first page of transactions with current filters.

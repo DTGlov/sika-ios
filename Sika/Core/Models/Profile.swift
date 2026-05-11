@@ -76,6 +76,14 @@ struct Profile: Codable, Identifiable, Equatable {
         copy(currency: value)
     }
 
+    /// Returns a copy with `monthlyIncome` replaced.
+    /// Used by S2's syncMonthlyIncome side effect so the local profile
+    /// cache stays in sync with profiles.monthly_income after every
+    /// income-source mutation. Phase 9's HealthRow reads this field.
+    func withMonthlyIncome(_ value: Decimal?) -> Profile {
+        copy(monthlyIncome: value)
+    }
+
     /// Returns a copy with the budget config (cycle start + 3 percentages) replaced.
     func withBudgetConfig(
         cycleStartDay: Int,
