@@ -797,8 +797,7 @@ final class AppState {
             toAccountId: nil,
             categoryId: nil,
             transactionDate: today,
-            note: nudge.incomeSource.name,
-            isActive: true
+            note: nudge.incomeSource.name
         )
 
         do {
