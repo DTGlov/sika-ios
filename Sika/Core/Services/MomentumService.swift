@@ -78,6 +78,21 @@ final class MomentumService {
         }
     }
 
+    /// Fetch the most recent 30 momentum events for the user, newest first.
+    /// Powers /momentum's Recent Activity section. Intentionally NOT part
+    /// of the profile-load flow — momentum_events grows unbounded and
+    /// shouldn't be hot-pathed on every app launch.
+    func fetchRecentEvents(userId: UUID) async throws -> [MomentumEvent] {
+        let response: PostgrestResponse<[MomentumEvent]> = try await client
+            .from("momentum_events")
+            .select()
+            .eq("user_id", value: userId)
+            .order("created_at", ascending: false)
+            .limit(30)
+            .execute()
+        return response.value
+    }
+
     /// Read-only fetch used by HealthService snapshot composition.
     /// Returns nil on any error or missing row.
     func fetchMomentumOrNil(userId: UUID) async -> Momentum? {
