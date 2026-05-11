@@ -62,38 +62,41 @@ struct DailyStoryCard: View {
         if let urlStr = story.imageUrl,
            !urlStr.isEmpty,
            let url = URL(string: urlStr) {
-            // Layout note: SwiftUI leaks an AsyncImage's natural pixel
-            // dimensions through the container when the inner image lacks
-            // its own frame constraint — inside a ScrollView (unbounded
-            // vertical space) the outer .frame(height: 192) becomes a
-            // *proposal* rather than a hard cap, and the card grows to
-            // the source image's height. The fix is to bind the inner
-            // image to the container bounds with .scaledToFill() +
-            // .frame(maxWidth: .infinity, maxHeight: .infinity). The
-            // outer .frame(height: 192) is now the authoritative cap;
-            // .clipped() trims any overshoot from .scaledToFill().
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .empty:
-                    // Same fill frame as .success so there's no layout
-                    // jump on load.
-                    Color.clear
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                case .failure:
-                    // Match web's ImageWithFallback onError → null
-                    EmptyView()
-                @unknown default:
-                    EmptyView()
-                }
-            }
-            .frame(height: 192)              // h-48 on web — authoritative cap
-            .frame(maxWidth: .infinity)
-            .clipped()
+            // Layout fix (round 2): Fix A's inner-image .scaledToFill()
+            // + flexible-fill frame still leaked source image dimensions
+            // on device, because `.frame(maxWidth: .infinity, maxHeight:
+            // .infinity)` doesn't act as a hard cap — AsyncImage's child
+            // can still report a larger natural size inside an unbounded-
+            // height parent (ScrollView).
+            //
+            // Robust pattern: invert the structure. Color.clear sized at
+            // 192pt is the authoritative size declaration. AsyncImage
+            // rides in `.overlay`, which is layout-passive — overlays
+            // take the size of their host and cannot expand it. This
+            // breaks the intrinsic-size leak chain. `.clipped()` outermost
+            // trims any pixel overflow from `.scaledToFill()` inside the
+            // overlay.
+            Color.clear
+                .frame(maxWidth: .infinity)
+                .frame(height: 192)              // h-48 on web — authoritative cap
+                .overlay(
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .empty:
+                            Color.clear
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        case .failure:
+                            // Match web's ImageWithFallback onError → null
+                            Color.clear
+                        @unknown default:
+                            Color.clear
+                        }
+                    }
+                )
+                .clipped()
         }
     }
 }
