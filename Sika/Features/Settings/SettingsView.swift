@@ -66,6 +66,13 @@ struct SettingsView: View {
             .background(SikaTheme.Color.background)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                // Refresh categories so the Archived collapsible (S3) and
+                // group counts reflect changes made on other devices since
+                // the session loaded. Cheap query — single round-trip with
+                // no joins.
+                await appState.refreshCategories()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {

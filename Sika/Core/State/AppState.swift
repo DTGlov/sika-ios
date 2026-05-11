@@ -1478,6 +1478,125 @@ final class AppState {
         flow = .authenticated(profile: profile.withMonthlyIncome(total))
     }
 
+    // MARK: - Phase S3 (Settings → Categories) — CRUD + archive/restore
+
+    /// Create a new category. iOS keeps a single `categories` array on
+    /// AppState that holds BOTH active and archived rows; the view layer
+    /// (Transactions filter, Recurring picker, Settings groupings) filters
+    /// `archived != true` at its own boundary. So new rows just get
+    /// appended once.
+    @discardableResult
+    func createCategory(
+        name: String,
+        type: CategoryType,
+        icon: String?,
+        bucketId: UUID?
+    ) async -> Bool {
+        guard let userId = session?.user.id else { return false }
+        do {
+            let payload = CategoryService.CategoryPayload(
+                user_id: userId,
+                name: name,
+                category_type: type.rawValue,
+                icon: icon,
+                bucket_id: bucketId,
+                archived: false
+            )
+            let row = try await categoryService.create(payload: payload)
+            categories.append(row)
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ createCategory failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    /// Update an existing category. Does NOT touch `archived` — preserves
+    /// whatever state the row was in (archived edits stay archived; active
+    /// edits stay active).
+    @discardableResult
+    func updateCategory(
+        id: UUID,
+        name: String,
+        type: CategoryType,
+        icon: String?,
+        bucketId: UUID?
+    ) async -> Bool {
+        guard let userId = session?.user.id else { return false }
+        let preservedArchived = categories.first(where: { $0.id == id })?.archived ?? false
+        do {
+            let payload = CategoryService.CategoryPayload(
+                user_id: userId,
+                name: name,
+                category_type: type.rawValue,
+                icon: icon,
+                bucket_id: bucketId,
+                archived: preservedArchived
+            )
+            let row = try await categoryService.update(id: id, payload: payload)
+            if let idx = categories.firstIndex(where: { $0.id == id }) {
+                categories[idx] = row
+            }
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ updateCategory failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    /// Soft archive (sets `archived = true`). The local row stays in
+    /// `categories` so the Settings Archived collapsible can still find
+    /// it; other surfaces filter it out via `archived != true`.
+    @discardableResult
+    func archiveCategory(_ id: UUID) async -> Bool {
+        do {
+            try await categoryService.archive(id: id)
+            if let idx = categories.firstIndex(where: { $0.id == id }) {
+                categories[idx].archived = true
+            }
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ archiveCategory failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    /// Restore from archive (sets `archived = false`).
+    @discardableResult
+    func restoreCategory(_ id: UUID) async -> Bool {
+        do {
+            try await categoryService.restore(id: id)
+            if let idx = categories.firstIndex(where: { $0.id == id }) {
+                categories[idx].archived = false
+            }
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ restoreCategory failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    /// Re-fetch the full categories array. Used by SettingsView's `.task`
+    /// so the Archived collapsible stays current across long-lived sessions
+    /// (and reflects archive state changes that came from other devices).
+    func refreshCategories() async {
+        do {
+            categories = try await categoryService.fetchAll()
+        } catch {
+            #if DEBUG
+            print("⚠️ refreshCategories failed: \(error)")
+            #endif
+        }
+    }
+
     // MARK: - Phase T1 (Transactions tab) — load + delete
 
     /// Load the first page of transactions with current filters.
