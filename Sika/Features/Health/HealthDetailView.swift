@@ -67,7 +67,7 @@ struct HealthDetailView: View {
             MomentumDetailPlaceholderView()
         }
         .navigationDestination(isPresented: $showBadges) {
-            BadgesGridPlaceholderView()
+            BadgesView()
         }
         .onAppear {
             guard !hasAppeared else { return }
