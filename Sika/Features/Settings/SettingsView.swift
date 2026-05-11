@@ -10,6 +10,7 @@ import SwiftUI
 /// can push as a sub-route.
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
+    @Environment(SplashCoordinator.self) private var splashCoordinator
     @Environment(\.dismiss) private var dismiss
 
     private var hasOnlyDefaultCats: Bool {
@@ -59,6 +60,22 @@ struct SettingsView: View {
                     SignOutButton()
                     DangerZoneSection()
                     PrivacyPolicyLink()
+
+                    #if DEBUG
+                    Button {
+                        dismiss()
+                        splashCoordinator.replayAsCold()
+                    } label: {
+                        Text("[DEV] Replay splash")
+                            .font(SikaTheme.Typography.sans(12))
+                            .foregroundStyle(SikaTheme.Color.mutedForeground)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(SikaTheme.Color.muted)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                    #endif
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 16)
