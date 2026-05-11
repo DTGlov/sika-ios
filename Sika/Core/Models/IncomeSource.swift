@@ -7,6 +7,8 @@ struct IncomeSource: Codable, Identifiable, Equatable, Hashable {
     let amount: Decimal
     let frequency: IncomeFrequency
     let expectedDay: Int?
+    let icon: String?
+    let accountId: UUID?
     let isActive: Bool
     let notes: String?
     let createdAt: Date?
@@ -19,6 +21,8 @@ struct IncomeSource: Codable, Identifiable, Equatable, Hashable {
         case amount
         case frequency
         case expectedDay = "expected_day"
+        case icon
+        case accountId = "account_id"
         case isActive = "is_active"
         case notes
         case createdAt = "created_at"
