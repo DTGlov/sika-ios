@@ -59,10 +59,16 @@ var body: some Scene {
                 )
 
             // Splash overlay — animated cowrie on navy.
+            // The scale-up + fade exit is owned by `.transition` here
+            // (not local @State on the view) so the coordinator's
+            // `withAnimation { isShowing = false }` drives both the
+            // splash's removal and the root content's cross-fade-in
+            // through the same animation curve.
             if splashCoordinator.isShowing {
                 AnimatedSplashView()
+                    .environment(appState)
                     .environment(splashCoordinator)
-                    .transition(.opacity)
+                    .transition(.scale(scale: 1.05).combined(with: .opacity))
             }
         }
     }

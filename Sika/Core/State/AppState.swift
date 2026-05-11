@@ -22,6 +22,12 @@ final class AppState {
     private(set) var session: Session?
     private(set) var isPerformingAuthAction: Bool = false
     private(set) var lastAuthError: String?
+    /// True once the bootstrap path has reached a Home-renderable
+    /// state (or determined the user is signed out). Phase 9.5d
+    /// splash observes this and holds open until both the animation
+    /// minimum duration AND this flag are satisfied — preventing the
+    /// "splash → loading spinner → Home" flash on slow networks.
+    private(set) var criticalDataReady: Bool = false
     private(set) var incomeSources: [IncomeSource] = []
     private(set) var accounts: [Account] = []
     private(set) var categories: [TransactionCategory] = []
@@ -420,8 +426,18 @@ final class AppState {
             await loadProfile()
         } else {
             self.flow = .signIn
+            // No data to fetch — splash can exit as soon as its minimum
+            // animation duration completes.
+            markCriticalDataReady()
         }
         startObservingAuthChanges()
+    }
+
+    /// Set `criticalDataReady = true`. Idempotent. Called at every
+    /// auth-resolved exit point in the bootstrap path so the Phase 9.5d
+    /// splash knows the app is ready for Home (or SignIn) to render.
+    func markCriticalDataReady() {
+        criticalDataReady = true
     }
 
     private func startObservingAuthChanges() {
@@ -517,6 +533,8 @@ final class AppState {
             try? await authService.signOut()
             session = nil
             flow = .signIn
+            // Bounced to SignIn — splash should still exit; no data to wait on.
+            markCriticalDataReady()
             return
         }
 
@@ -555,6 +573,8 @@ final class AppState {
         await fireCycleEndedBadgeCheck()
 
         flow = .authenticated(profile: profile)
+        // Home is now renderable — release the splash gate.
+        markCriticalDataReady()
 
         if let session = self.session {
             AnalyticsService.shared.identify(
