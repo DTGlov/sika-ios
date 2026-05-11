@@ -173,8 +173,7 @@ final class AddTransactionWizardViewModel {
             toAccountId: toAccountId,
             categoryId: categoryId,
             transactionDate: dateString,
-            note: noteValue,
-            isActive: true
+            note: noteValue
         )
 
         let optimistic = Transaction(
@@ -189,7 +188,6 @@ final class AddTransactionWizardViewModel {
             paidFromGoalId: nil,
             transactionDate: dateString,
             note: noteValue,
-            isActive: true,
             softDeleted: false,
             generatedFromRecurring: nil,
             createdAt: now,

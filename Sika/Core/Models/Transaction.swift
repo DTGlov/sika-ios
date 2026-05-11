@@ -24,10 +24,13 @@ struct Transaction: Codable, Identifiable, Equatable, Hashable {
     let paidFromGoalId: UUID?
     let transactionDate: String
     let note: String?
-    /// DEPRECATED: transactions table has no is_active column. Optional so
-    /// decoding tolerates the missing key. Remove when no callsites set it.
-    let isActive: Bool?
+    /// TBD verification: `soft_deleted` may not exist on the transactions
+    /// table. Optional so decoding tolerates a missing key. If a future
+    /// schema check confirms the column is absent, drop this field too
+    /// (same class of phantom as `is_active`, which this PR removed).
     let softDeleted: Bool?
+    /// Real column — `RecurringService.insertAutoLoggedTransaction` writes
+    /// to it successfully, so the schema confirms existence.
     let generatedFromRecurring: UUID?
     let createdAt: Date?
     let updatedAt: Date?
@@ -44,7 +47,6 @@ struct Transaction: Codable, Identifiable, Equatable, Hashable {
         case paidFromGoalId = "paid_from_goal_id"
         case transactionDate = "transaction_date"
         case note
-        case isActive = "is_active"
         case softDeleted = "soft_deleted"
         case generatedFromRecurring = "generated_from_recurring"
         case createdAt = "created_at"
@@ -59,6 +61,11 @@ struct Transaction: Codable, Identifiable, Equatable, Hashable {
 }
 
 /// Insert payload — matches what the form writes to the server.
+///
+/// Note: the `transactions` table does NOT have an `is_active` column.
+/// A previous version of this struct sent `is_active: true`; Supabase
+/// rejected every insert with "could not find is_active column". The
+/// field is intentionally absent here.
 struct TransactionDraft: Encodable {
     let userId: UUID
     let type: TransactionType
@@ -70,7 +77,6 @@ struct TransactionDraft: Encodable {
     let categoryId: UUID?
     let transactionDate: String
     let note: String?
-    let isActive: Bool
 
     enum CodingKeys: String, CodingKey {
         case userId = "user_id"
@@ -81,6 +87,5 @@ struct TransactionDraft: Encodable {
         case categoryId = "category_id"
         case transactionDate = "transaction_date"
         case note
-        case isActive = "is_active"
     }
 }
