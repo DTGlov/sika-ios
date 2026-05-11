@@ -11,29 +11,39 @@ import SwiftUI
 /// on takeover, the body stays fully visible at frame 0 — only the
 /// spine and ribs are added during the animation.
 ///
-/// Timeline (cold, ~1.6s):
+/// Exit gating (Phase 9.5d fix): the view's timeline ends with
+/// `coordinator.animationDidComplete(criticalDataReady:)`. The
+/// coordinator exits only when BOTH that callback has fired AND
+/// `AppState.criticalDataReady == true`. The view also observes
+/// the AppState flag and forwards changes to the coordinator so
+/// the slow-network case (animation finishes first, data later)
+/// exits cleanly as soon as data lands.
+///
+/// The scale-and-fade exit itself is provided by the parent's
+/// `.transition(.scale(scale: 1.05).combined(with: .opacity))` plus
+/// the coordinator's `withAnimation` around the `isShowing` flip —
+/// not a local @State on this view.
+///
+/// Timeline (cold, ~1.3s before gate):
 ///   0 – 200ms     Hold (body-only, storyboard match)
 ///   200 – 600     Spine draws top-to-bottom (easeInOut)
 ///   600 – 1100    4 ribs staggered out (100ms apart, 200ms each)
 ///   1100 – 1300   Hold at full cowrie
-///   1300 – 1600   Exit (scale 1→1.05 + fade to 0, easeIn)
+///   1300+         `animationDidComplete` fires; exits if data ready
 ///
-/// Timeline (warm, ~700ms):
+/// Timeline (warm, ~400ms before gate):
 ///   0 – 100ms     Hold
 ///   100 – 300     Spine + 4 ribs appear together (easeOut)
 ///   300 – 400     Hold
-///   400 – 700     Exit
+///   400+          `animationDidComplete` fires; exits if data ready
 struct AnimatedSplashView: View {
     @Environment(SplashCoordinator.self) private var coordinator
+    @Environment(AppState.self) private var appState
 
     // Body is visible from frame 0 to seam with the launch storyboard.
     // No fade-in on body; only spine + ribs animate.
     @State private var spineProgress: Double = 0
     @State private var ribProgress: [Double] = [0, 0, 0, 0]
-
-    // Exit state — scale up + fade out at the end.
-    @State private var exitScale: CGFloat = 1.0
-    @State private var exitOpacity: Double = 1.0
 
     private let bodyColor   = Color(hex: 0xD4A017)
     private let strokeColor = Color(hex: 0x0E1A2E)
@@ -52,10 +62,13 @@ struct AnimatedSplashView: View {
             }
             .frame(width: cowrieSize, height: cowrieSize)
         }
-        .scaleEffect(exitScale)
-        .opacity(exitOpacity)
         .onAppear {
             Task { await playAnimation() }
+        }
+        .onChange(of: appState.criticalDataReady) { _, ready in
+            if ready {
+                coordinator.dataDidBecomeReady()
+            }
         }
     }
 
@@ -123,7 +136,7 @@ struct AnimatedSplashView: View {
         switch coordinator.mode {
         case .cold:    await playColdAnimation()
         case .warm:    await playWarmAnimation()
-        case .skipped: coordinator.splashDidFinish()
+        case .skipped: coordinator.animationDidComplete(criticalDataReady: appState.criticalDataReady)
         }
     }
 
@@ -150,8 +163,11 @@ struct AnimatedSplashView: View {
         // Phase 4: hold at full cowrie (200ms)
         try? await Task.sleep(for: .milliseconds(200))
 
-        // Phase 5: exit
-        await runExit()
+        // Gate the exit on data-ready. Static cowrie holds at full
+        // opacity until data lands — no spinner, no pulse, no text.
+        coordinator.animationDidComplete(
+            criticalDataReady: appState.criticalDataReady
+        )
     }
 
     private func playWarmAnimation() async {
@@ -168,16 +184,8 @@ struct AnimatedSplashView: View {
         // Brief hold
         try? await Task.sleep(for: .milliseconds(100))
 
-        // Exit
-        await runExit()
-    }
-
-    private func runExit() async {
-        withAnimation(.easeIn(duration: 0.3)) {
-            exitScale = 1.05
-            exitOpacity = 0
-        }
-        try? await Task.sleep(for: .milliseconds(300))
-        coordinator.splashDidFinish()
+        coordinator.animationDidComplete(
+            criticalDataReady: appState.criticalDataReady
+        )
     }
 }
