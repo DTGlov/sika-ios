@@ -2,7 +2,9 @@ import SwiftUI
 
 /// Single horizontal pill on Home. Top row: "Your Sika score: N · Label".
 /// Bottom row: streak chip · momentum tier · badge count (each conditional).
-/// Trailing chevron. Tap is a no-op for MVP — Phase 9.5 wires /health detail.
+/// Trailing chevron. The row itself is presentational — the tap that
+/// pushes `HealthDetailView` (Phase 9.5a) is owned by the parent's
+/// `Button { ... } label: { HealthRow(...) }` wrapping on Home.
 struct HealthRow: View {
     let snapshot: HealthSnapshot?
     let hasLoggedToday: Bool
