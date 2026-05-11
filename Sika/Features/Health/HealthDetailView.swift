@@ -61,7 +61,7 @@ struct HealthDetailView: View {
         .navigationTitle("Your Sika score")
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(isPresented: $showStreaks) {
-            StreakDetailPlaceholderView()
+            StreaksView()
         }
         .navigationDestination(isPresented: $showMomentum) {
             MomentumDetailPlaceholderView()
