@@ -7,17 +7,38 @@ import SwiftUI
 ///   - score hero with 0→current count-up
 ///   - 4 stat tiles (logging streak, savings streak, momentum, badges)
 ///   - factor breakdown (5 cards, staggered entry, animated bars)
+///   - Explore section (2×2 grid: Streaks / Momentum / Goals / Badges)
 ///   - how-this-works footer
 ///
 /// Read-only. No mutations. Reuses the live `appState.healthSnapshot`
 /// snapshot loaded by Phase 9's `HealthService`; never recomputes the
 /// score locally.
+///
+/// Explore section (Phase 9.5a-explore fix-up):
+///   - Streaks / Momentum / Badges tiles push placeholder destinations
+///     within the current NavigationStack — 9.5b replaces with real
+///     surfaces.
+///   - Goals tile uses `onSwitchToTab(.goals)` (closure threaded from
+///     `AuthenticatedRootView`) to cross-stack jump to the Goals tab.
+///     Switching tabs unmounts the Home NavigationStack, so an explicit
+///     `dismiss()` is unnecessary.
 struct HealthDetailView: View {
+    /// Cross-stack tab switcher. Threaded from `AuthenticatedRootView`
+    /// through `AuthenticatedHomeView`. Used by the Explore section's
+    /// Goals tile.
+    let onSwitchToTab: (MainTab) -> Void
+
     @Environment(AppState.self) private var appState
 
     @State private var displayedScore: Int = 0
     @State private var factorsVisible: [Bool] = []
     @State private var hasAppeared: Bool = false
+
+    // Explore section nav state (placeholder destinations within the
+    // current /health stack).
+    @State private var showStreaks: Bool = false
+    @State private var showMomentum: Bool = false
+    @State private var showBadges: Bool = false
 
     private var snapshot: HealthSnapshot? { appState.healthSnapshot }
     private var score: HealthScore? { snapshot?.score }
@@ -29,6 +50,7 @@ struct HealthDetailView: View {
                 scoreHero
                 statTilesRow
                 factorsSection
+                exploreSection
                 tipsFooter
             }
             .padding(.horizontal, 16)
@@ -38,6 +60,15 @@ struct HealthDetailView: View {
         .background(SikaTheme.Color.background)
         .navigationTitle("Your Sika score")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $showStreaks) {
+            StreakDetailPlaceholderView()
+        }
+        .navigationDestination(isPresented: $showMomentum) {
+            MomentumDetailPlaceholderView()
+        }
+        .navigationDestination(isPresented: $showBadges) {
+            BadgesGridPlaceholderView()
+        }
         .onAppear {
             guard !hasAppeared else { return }
             hasAppeared = true
@@ -142,6 +173,50 @@ struct HealthDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(SikaTheme.Color.card)
             .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    // MARK: - Explore section
+
+    private var exploreSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Explore")
+                .font(SikaTheme.Typography.sans(15, weight: .semibold))
+                .foregroundStyle(SikaTheme.Color.foreground)
+                .padding(.horizontal, 4)
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 8),
+                    GridItem(.flexible(), spacing: 8)
+                ],
+                spacing: 8
+            ) {
+                ExploreCardView(
+                    iconName: "flame.fill",
+                    iconColor: Color(hex: 0xF97316),
+                    label: "Streaks",
+                    onTap: { showStreaks = true }
+                )
+                ExploreCardView(
+                    iconName: "rosette",
+                    iconColor: Color(hex: 0xD4AF37),
+                    label: "Momentum",
+                    onTap: { showMomentum = true }
+                )
+                ExploreCardView(
+                    iconName: "target",
+                    iconColor: Color(hex: 0x00D9A3),
+                    label: "Goals",
+                    onTap: { onSwitchToTab(.goals) }
+                )
+                ExploreCardView(
+                    iconName: "chart.line.uptrend.xyaxis",
+                    iconColor: Color(hex: 0xA78BFA),
+                    label: "Badges",
+                    onTap: { showBadges = true }
+                )
+            }
+        }
     }
 
     // MARK: - Tips footer

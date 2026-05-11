@@ -15,6 +15,11 @@ struct AuthenticatedHomeView: View {
     /// Closure used by ShouldIBuyButton's "I bought it" flow to switch the
     /// main tab to Transactions. Owned by `AuthenticatedRootView`.
     let onSwitchToTransactions: () -> Void
+    /// Generic tab switcher used by /health detail's Explore section
+    /// (Goals tile flips to `.goals` instead of pushing). Same precedent
+    /// as `onSwitchToTransactions` but variadic over MainTab so future
+    /// cross-stack jumps don't need a new closure each.
+    let onSwitchToTab: (MainTab) -> Void
 
     @Environment(AppState.self) private var appState
     @State private var isSettingsPresented = false
@@ -258,7 +263,7 @@ struct AuthenticatedHomeView: View {
             CycleDetailView(cycle: cycle)
         }
         .navigationDestination(isPresented: $showHealthDetail) {
-            HealthDetailView()
+            HealthDetailView(onSwitchToTab: onSwitchToTab)
         }
         .fullScreenCover(item: nextBadgeCelebration) { badge in
             BadgeCelebrationSheet(
