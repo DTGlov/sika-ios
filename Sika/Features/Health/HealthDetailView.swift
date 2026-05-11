@@ -64,7 +64,7 @@ struct HealthDetailView: View {
             StreaksView()
         }
         .navigationDestination(isPresented: $showMomentum) {
-            MomentumDetailPlaceholderView()
+            MomentumView()
         }
         .navigationDestination(isPresented: $showBadges) {
             BadgesView()
