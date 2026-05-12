@@ -249,10 +249,16 @@ struct TransactionRowView: View {
 
     private var actionMenu: some View {
         Menu {
-            Button {
-                onEdit?()
-            } label: {
-                Label("Edit", systemImage: "pencil")
+            // T3 — adjustments cannot be edited. Editing them retroactively
+            // changes the meaning of every transaction logged after the
+            // original adjustment. To fix a bad reconcile: delete + reconcile
+            // again.
+            if row.type != .adjustment {
+                Button {
+                    onEdit?()
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
             }
 
             Button(role: .destructive) {

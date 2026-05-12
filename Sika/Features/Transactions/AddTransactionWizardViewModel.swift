@@ -168,6 +168,47 @@ final class AddTransactionWizardViewModel {
         submitState != .submitting
     }
 
+    /// T3 — insufficient-balance check. Returns the context for the IBS
+    /// when the save would take the debited account negative; nil when
+    /// the save is safe. Income skips the check (no debit). Edit mode
+    /// also skips — the original row's amount already moved the balance,
+    /// so an edit isn't a fresh debit; reapplying the guard would block
+    /// legitimate corrections.
+    func validateBalance(
+        accounts: [Account],
+        balances: [UUID: Decimal]
+    ) -> InsufficientBalanceContext? {
+        guard !isEditMode else { return nil }
+
+        guard let amount = Decimal(string: amountString.isEmpty ? "0" : amountString),
+              amount > 0 else { return nil }
+
+        let debitAccountId: UUID?
+        switch selectedType {
+        case .expense:
+            debitAccountId = selectedAccountId
+        case .transfer:
+            debitAccountId = selectedFromAccountId
+        case .income, .adjustment:
+            return nil
+        }
+
+        guard let accountId = debitAccountId,
+              let account = accounts.first(where: { $0.id == accountId }) else {
+            return nil
+        }
+
+        let current = AccountBalanceEngine.balance(for: account, in: balances)
+        guard amount > current else { return nil }
+
+        return InsufficientBalanceContext(
+            accountId: accountId,
+            accountName: account.name,
+            currentBalance: current,
+            attemptedAmount: amount
+        )
+    }
+
     /// Build both the insert payload (TransactionDraft) and the optimistic local
     /// row (Transaction) from the wizard's accumulated state. Returns nil if
     /// validation fails defensively (shouldn't happen if Step 3 was reached

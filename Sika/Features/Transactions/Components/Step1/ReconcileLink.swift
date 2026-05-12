@@ -1,7 +1,9 @@
 import SwiftUI
 
 /// Slate-gray "Reconcile an account balance instead" link below the number pad.
-/// Tappable; parent decides what happens (in 1B-2a, shows a "Coming soon" toast).
+/// Tappable; parent decides what happens. T3 wires this to dismiss the wizard
+/// and open the standalone ReconcileAccountSheet pre-filled with the wizard's
+/// currently-selected account.
 struct ReconcileLink: View {
     let onTap: () -> Void
 

@@ -12,6 +12,13 @@ struct AddTransactionWizardView: View {
     let accounts: [Account]
     let categories: [TransactionCategory]
     let editingTransaction: Transaction?
+    /// Called when the user taps "Reconcile an account balance instead" on
+    /// Step 1. The wizard dismisses; the parent presents the standalone
+    /// reconcile sheet pre-filled with the supplied account (may be nil if
+    /// no account is selected yet). Nil callback means the link shows the
+    /// "Coming soon" toast (legacy behavior — unused once T3 wires the FAB
+    /// path).
+    let onReconcileTap: ((Account?) -> Void)?
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -22,16 +29,24 @@ struct AddTransactionWizardView: View {
     @State private var showSaveErrorToast = false
     @State private var saveErrorMessage = ""
 
+    // T3: IBS state — populated when validateBalance returns a deficit context.
+    @State private var ibsContext: InsufficientBalanceContext? = nil
+    /// One-shot flag the user sets via "Log anyway" so the next save attempt
+    /// bypasses validateBalance and shows the warning toast on success.
+    @State private var forceOverdraftSave = false
+
     private let transactionService = TransactionService()
 
     init(
         accounts: [Account],
         categories: [TransactionCategory],
-        editingTransaction: Transaction? = nil
+        editingTransaction: Transaction? = nil,
+        onReconcileTap: ((Account?) -> Void)? = nil
     ) {
         self.accounts = accounts
         self.categories = categories
         self.editingTransaction = editingTransaction
+        self.onReconcileTap = onReconcileTap
         self._viewModel = State(
             initialValue: AddTransactionWizardViewModel(
                 editingTransaction: editingTransaction
@@ -51,7 +66,24 @@ struct AddTransactionWizardView: View {
             Group {
                 switch viewModel.currentStep {
                 case .howMuch:
-                    Step1Content(viewModel: viewModel, accounts: accounts)
+                    Step1Content(
+                        viewModel: viewModel,
+                        accounts: accounts,
+                        onReconcileTap: onReconcileTap.map { handler in
+                            // Capture the currently-selected account at tap
+                            // time. Transfer uses `selectedFromAccountId`;
+                            // others use `selectedAccountId`.
+                            return {
+                                let pickedId = viewModel.selectedType == .transfer
+                                    ? viewModel.selectedFromAccountId
+                                    : viewModel.selectedAccountId
+                                let picked = pickedId.flatMap { id in
+                                    accounts.first { $0.id == id }
+                                }
+                                handler(picked)
+                            }
+                        }
+                    )
                 case .whatFor:
                     Group {
                         if viewModel.step2IsTransferView {
@@ -95,6 +127,36 @@ struct AddTransactionWizardView: View {
             variant: .error,
             duration: .seconds(3)
         )
+        .sheet(item: $ibsContext) { context in
+            InsufficientBalanceSheet(
+                accountName: context.accountName,
+                currentBalance: context.currentBalance,
+                attemptedAmount: context.attemptedAmount,
+                currencyCode: appState.currencyCode,
+                onCancel: {
+                    // Keep wizard open; user can adjust amount or account.
+                    ibsContext = nil
+                },
+                onReconcile: {
+                    // Hand the wizard's onReconcileTap callback the
+                    // debited account, then dismiss the wizard. Capture
+                    // the account FIRST — `dismiss()` and the sheet-item
+                    // clear race otherwise.
+                    let accountId = context.accountId
+                    let picked = accounts.first { $0.id == accountId }
+                    ibsContext = nil
+                    if let handler = onReconcileTap {
+                        handler(picked)
+                    }
+                },
+                onLogAnyway: {
+                    // Bypass validateBalance on next save; performAdd
+                    // surfaces the warning toast on success.
+                    forceOverdraftSave = true
+                    Task { await performSave() }
+                }
+            )
+        }
     }
 
     // MARK: - Save flow
@@ -111,9 +173,22 @@ struct AddTransactionWizardView: View {
 
         if let editing = viewModel.editingTransaction {
             await performEdit(existingId: editing.id)
-        } else {
-            await performAdd(userId: userId)
+            return
         }
+
+        // T3 — insufficient-balance guard. Bypassed by `forceOverdraftSave`
+        // (set by IBS's "Log anyway" action). On detection, present IBS
+        // and short-circuit; the user's chosen action drives the next step.
+        if !forceOverdraftSave,
+           let context = viewModel.validateBalance(
+               accounts: accounts,
+               balances: appState.accountsBalances
+           ) {
+            ibsContext = context
+            return
+        }
+
+        await performAdd(userId: userId)
     }
 
     private func performAdd(userId: UUID) async {
@@ -164,6 +239,23 @@ struct AddTransactionWizardView: View {
 
             savedToastMessage = toastMessage(for: viewModel.selectedType)
             showSavedToast = true
+
+            // T3 — if the user chose "Log anyway" from IBS, surface the
+            // amber warning toast 400ms after the green "Logged" toast so
+            // the two don't stack. The wizard's already dismissing; the
+            // warning toast is global (lives on AuthenticatedRootView).
+            if forceOverdraftSave, let context = ibsContext {
+                let accountName = context.accountName
+                Task {
+                    try? await Task.sleep(for: .milliseconds(400))
+                    appState.enqueueWarningToast(
+                        "Logged. Your \(accountName) is now negative."
+                    )
+                }
+                forceOverdraftSave = false
+                ibsContext = nil
+            }
+
             try? await Task.sleep(for: .milliseconds(800))
             dismiss()
         } catch {
