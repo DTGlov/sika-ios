@@ -8,6 +8,9 @@ struct TransactionRowView: View {
     let currencyCode: String
     /// Caller is responsible for the actual delete; this view only confirms.
     let onDelete: () async -> Void
+    /// Caller opens the wizard in edit mode. Optional so existing call sites
+    /// (e.g. previews) don't need to wire one — they get a no-op.
+    var onEdit: (() -> Void)? = nil
 
     @State private var showDeleteAlert = false
 
@@ -247,9 +250,7 @@ struct TransactionRowView: View {
     private var actionMenu: some View {
         Menu {
             Button {
-                #if DEBUG
-                print("📝 Edit tapped (T2 pending)")
-                #endif
+                onEdit?()
             } label: {
                 Label("Edit", systemImage: "pencil")
             }

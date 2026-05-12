@@ -8,6 +8,7 @@ import SwiftUI
 struct SikaToast: View {
     enum Variant {
         case success
+        case successGreen
         case info
         case error
     }
@@ -35,6 +36,10 @@ struct SikaToast: View {
         case .success:
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(SikaTheme.Color.sikaAccent)
+                .font(.system(size: 16, weight: .semibold))
+        case .successGreen:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(SikaTheme.Color.sikaSuccess)
                 .font(.system(size: 16, weight: .semibold))
         case .info:
             EmptyView()

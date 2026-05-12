@@ -101,6 +101,16 @@ final class AppState {
     /// surface new unlocks. Head of the array drives the .fullScreenCover.
     private(set) var unviewedBadgeUnlocks: [UserBadge] = []
 
+    /// Pending "+N pts" floats. Any surface that awards momentum enqueues
+    /// one of these; the global MomentumFloatContainer in AuthenticatedRootView
+    /// renders + self-dismisses each event. Wired in Phase T2.
+    private(set) var pendingMomentumFloats: [MomentumFloatEvent] = []
+
+    /// Pending milestone toast. Set after a logging/savings milestone is hit
+    /// by the mutation chain. Rendered by AuthenticatedRootView with a 500ms
+    /// delay so it appears after the type-aware "Logged" toast.
+    private(set) var pendingMilestoneToast: MilestoneToastEvent? = nil
+
     // MARK: - Phase T1 (Transactions tab)
 
     /// Joined transaction rows for the Transactions tab list.
@@ -797,7 +807,8 @@ final class AppState {
             toAccountId: nil,
             categoryId: nil,
             transactionDate: today,
-            note: nudge.incomeSource.name
+            note: nudge.incomeSource.name,
+            paidFromGoalId: nil
         )
 
         do {
@@ -1065,17 +1076,29 @@ final class AppState {
     /// - momentum: transaction_logged (+2) [+ logging_streak_7_days bonus on milestone]
     /// - badge checks: transaction_logged + streak_updated
     /// - snapshot refresh
+    /// - momentum float + milestone toast surface events (T2)
     ///
     /// Fire-and-forget: never throws, never blocks the caller.
     /// Auto-generated recurring transactions DO NOT call this — matches web.
+    /// Edit-path transaction updates DO NOT call this either — editing old
+    /// transactions must not re-tick streaks/momentum/badges.
     func fireTransactionLoggedHooks() async {
         guard let userId = session?.user.id else { return }
 
         let streakResult = await streakService.updateLoggingStreak(userId: userId)
-        await momentumService.award(userId: userId, event: .transactionLogged)
+        let txnAward = await momentumService.award(userId: userId, event: .transactionLogged)
+        if let txnAward { enqueueMomentumFloat(points: txnAward.pointsAwarded) }
 
         if streakResult?.milestoneHit == 7 {
-            await momentumService.award(userId: userId, event: .loggingStreak7Days)
+            let bonus = await momentumService.award(userId: userId, event: .loggingStreak7Days)
+            if let bonus { enqueueMomentumFloat(points: bonus.pointsAwarded) }
+        }
+
+        // Milestone toast — StreakEngine already appended milestoneHit to
+        // streaks.logging_milestones_shown during updateLoggingStreak, so
+        // milestoneHit is non-nil only on the FIRST crossing of [7/14/30/60/100].
+        if let milestone = streakResult?.milestoneHit {
+            pendingMilestoneToast = MilestoneToastEvent(kind: .logging, days: milestone)
         }
 
         async let txnUnlocks = badgeService.checkAndUnlock(userId: userId, trigger: .transactionLogged)
@@ -1799,8 +1822,16 @@ final class AppState {
             // Mutation chain (Phase 9 hooks). Fire-and-forget within this
             // method — wait for completion so loadGoalsList sees fresh state,
             // but never throw out of the chain.
-            await streakService.updateSavingsStreak(userId: userId)
-            await momentumService.award(userId: userId, event: .goalContribution)
+            let savingsResult = await streakService.updateSavingsStreak(userId: userId)
+            let contribAward = await momentumService.award(userId: userId, event: .goalContribution)
+            if let contribAward { enqueueMomentumFloat(points: contribAward.pointsAwarded) }
+
+            // Savings milestone toast (4/12/26/52 weeks). StreakEngine appends
+            // milestoneHit to streaks.savings_milestones_shown, so this fires
+            // only on the FIRST crossing per milestone per user.
+            if let milestone = savingsResult?.milestoneHit {
+                pendingMilestoneToast = MilestoneToastEvent(kind: .savings, days: milestone)
+            }
 
             async let contribUnlocks = badgeService.checkAndUnlock(
                 userId: userId,
@@ -2109,6 +2140,135 @@ final class AppState {
             print("⚠️ deleteAccountWithReassign failed: \(error)")
             #endif
             return false
+        }
+    }
+
+    // MARK: - Phase T2 — transaction edit + global momentum/milestone surfaces
+
+    /// Replace an existing transaction in local arrays after a successful
+    /// edit. Does NOT fire mutation hooks — editing must not re-tick streaks.
+    func replaceTransaction(_ updated: Transaction) {
+        if let idx = transactions.firstIndex(where: { $0.id == updated.id }) {
+            transactions[idx] = updated
+        }
+        // T1's list uses TransactionListRow (joined), not Transaction, so a
+        // straight swap isn't possible. The wizard caller drives the reload.
+    }
+
+    /// Refresh T1's transactionsList from the server after a wizard save.
+    /// Server-side filters mean: if the new row matches current filters it
+    /// appears at the top; otherwise the list is unchanged. No-op when T1
+    /// hasn't been loaded yet (avoids an unnecessary network call before
+    /// the user has visited the tab).
+    func refreshTransactionsListAfterSave() async {
+        guard !transactionsList.isEmpty else { return }
+        await loadFirstTransactionsPage()
+    }
+
+    /// Enqueue a "+N pts" float for the global MomentumFloatContainer to render.
+    /// Best-effort: silently no-op when there's nothing to show (zero points).
+    func enqueueMomentumFloat(points: Int) {
+        guard points > 0 else { return }
+        pendingMomentumFloats.append(MomentumFloatEvent(points: points))
+    }
+
+    /// Called by MomentumFloatView when its animation completes.
+    func dismissMomentumFloat(id: UUID) {
+        pendingMomentumFloats.removeAll { $0.id == id }
+    }
+
+    /// Called by the milestone toast view after its 3s display window.
+    func dismissMilestoneToast() {
+        pendingMilestoneToast = nil
+    }
+
+    /// Goal completion check from a paid_from_goal_id expense. Called after
+    /// fireTransactionLoggedHooks when the saved transaction is linked to a
+    /// target goal. If the goal's net balance now hits the target, marks
+    /// completed_at, awards +100pts goal_completed momentum, fires the
+    /// goal_completed badge trigger.
+    ///
+    /// Best-effort: errors are logged in DEBUG and swallowed.
+    func checkGoalCompletionFromPayment(goalId: UUID) async {
+        guard let userId = session?.user.id else { return }
+        guard let goal = (goals.first { $0.id == goalId } ?? goalsList.first { $0.id == goalId }),
+              goal.goalType == .target,
+              let target = goal.targetAmount,
+              goal.completedAt == nil else { return }
+
+        do {
+            let amounts = try await goalService.fetchAmounts(goalId: goalId)
+            // Net = contributions − payments. Goal "completes from payment" when
+            // the saved fund still meets/exceeds the target after the payment
+            // ALREADY landed. Mirrors the "fund hit target" semantic.
+            guard amounts.net >= target else { return }
+
+            try await goalService.markComplete(id: goalId)
+
+            // Refresh local goals so completed_at is reflected.
+            if let idx = goals.firstIndex(where: { $0.id == goalId }) {
+                let updated = try? await goalService.fetchOne(id: goalId)
+                if let updated { goals[idx] = updated }
+            }
+            if let idx = goalsList.firstIndex(where: { $0.id == goalId }) {
+                let updated = try? await goalService.fetchOne(id: goalId)
+                if let updated { goalsList[idx] = updated }
+            }
+
+            let momentumResult = await momentumService.award(userId: userId, event: .goalCompleted)
+            if let momentumResult {
+                enqueueMomentumFloat(points: momentumResult.pointsAwarded)
+            }
+
+            let newlyUnlocked = await badgeService.checkAndUnlock(
+                userId: userId,
+                trigger: .goalCompleted
+            )
+            for badge in newlyUnlocked where !unviewedBadgeUnlocks.contains(where: { $0.id == badge.id }) {
+                unviewedBadgeUnlocks.append(badge)
+            }
+        } catch {
+            #if DEBUG
+            print("⚠️ checkGoalCompletionFromPayment failed: \(error)")
+            #endif
+        }
+    }
+}
+
+// MARK: - Phase T2 — surface event models
+
+/// One "+N pts" bubble in the global momentum-float queue. Identity is the
+/// `id`; equality is structural so animations don't churn.
+struct MomentumFloatEvent: Identifiable, Equatable {
+    let id: UUID
+    let points: Int
+    let createdAt: Date
+
+    init(points: Int) {
+        self.id = UUID()
+        self.points = points
+        self.createdAt = Date()
+    }
+}
+
+/// One milestone-celebration toast. Kind disambiguates the streak family
+/// (logging vs. savings) so the message reads naturally.
+struct MilestoneToastEvent: Identifiable, Equatable {
+    enum Kind: Equatable { case logging, savings }
+    let id: UUID
+    let kind: Kind
+    let days: Int
+
+    init(kind: Kind, days: Int) {
+        self.id = UUID()
+        self.kind = kind
+        self.days = days
+    }
+
+    var message: String {
+        switch kind {
+        case .logging: return "🔥 \(days)-day logging streak!"
+        case .savings: return "💰 \(days)-week savings streak!"
         }
     }
 }

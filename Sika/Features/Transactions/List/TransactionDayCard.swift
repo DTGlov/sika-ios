@@ -7,6 +7,8 @@ struct TransactionDayCard: View {
     let rows: [TransactionListRow]
     let currencyCode: String
     let onDelete: (UUID) async -> Void
+    /// Optional edit handler; nil from non-T1 surfaces (e.g. Goals contributions).
+    var onEdit: ((TransactionListRow) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -24,7 +26,8 @@ struct TransactionDayCard: View {
                 TransactionRowView(
                     row: row,
                     currencyCode: currencyCode,
-                    onDelete: { await onDelete(row.id) }
+                    onDelete: { await onDelete(row.id) },
+                    onEdit: onEdit.map { handler in { handler(row) } }
                 )
                 if index < rows.count - 1 {
                     Divider()

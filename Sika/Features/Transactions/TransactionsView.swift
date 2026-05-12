@@ -9,6 +9,7 @@ struct TransactionsView: View {
 
     @State private var search: String = ""
     @State private var showFilters: Bool = false
+    @State private var editingTransaction: Transaction? = nil
 
     private let goldColor = Color(hex: 0xD4A017)
     private let darkText = Color(hex: 0x0E1A2E)
@@ -47,6 +48,13 @@ struct TransactionsView: View {
                 accounts: appState.accounts,
                 categories: appState.categories,
                 budgetBuckets: appState.budgetBuckets
+            )
+        }
+        .sheet(item: $editingTransaction) { txn in
+            AddTransactionWizardView(
+                accounts: appState.accounts,
+                categories: appState.categories,
+                editingTransaction: txn
             )
         }
         .task {
@@ -149,6 +157,9 @@ struct TransactionsView: View {
                         currencyCode: appState.currencyCode,
                         onDelete: { id in
                             _ = await appState.deleteTransactionFromList(id)
+                        },
+                        onEdit: { row in
+                            editingTransaction = TransactionsView.transaction(from: row)
                         }
                     )
                 }
@@ -223,6 +234,33 @@ struct TransactionsView: View {
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
         .padding(.top, 4)
+    }
+
+    // MARK: - Edit-mode bridging
+
+    /// Build a `Transaction` from the joined T1 row. The wizard's edit branch
+    /// reads only the unjoined fields (type/amount/account ids/category/note/
+    /// date/paid-from-goal) — all present on the row. Server timestamps
+    /// (createdAt) are preserved; updatedAt is left nil and will be filled
+    /// by the persisted row when the edit save resolves.
+    static func transaction(from row: TransactionListRow) -> Transaction {
+        Transaction(
+            id: row.id,
+            userId: row.userId,
+            type: row.type,
+            amount: row.amount,
+            accountId: row.accountId,
+            toAccountId: row.toAccountId,
+            categoryId: row.categoryId,
+            goalId: row.goalId,
+            paidFromGoalId: row.paidFromGoalId,
+            transactionDate: row.transactionDate,
+            note: row.note,
+            softDeleted: false,
+            generatedFromRecurring: row.generatedFromRecurring,
+            createdAt: row.createdAt,
+            updatedAt: nil
+        )
     }
 
     // MARK: - Filtering + grouping

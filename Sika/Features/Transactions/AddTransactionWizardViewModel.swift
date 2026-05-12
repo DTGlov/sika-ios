@@ -14,6 +14,12 @@ final class AddTransactionWizardViewModel {
         case anyDetails = 3
     }
 
+    /// Set when the wizard is opened in edit mode. Pre-fills all fields and
+    /// branches performSave to the update path (which skips mutation hooks).
+    let editingTransaction: Transaction?
+
+    var isEditMode: Bool { editingTransaction != nil }
+
     // Navigation
     var currentStep: Step = .howMuch
 
@@ -30,7 +36,7 @@ final class AddTransactionWizardViewModel {
     // Step 3 fields
     var note: String = ""
     var transactionDate: Date = Date()
-    var selectedGoalId: UUID? = nil  // always nil in 1B-2c; wired in 1B-2c.1
+    var selectedGoalId: UUID? = nil  // wired in T2
 
     // Submit state
     enum SubmitState: Equatable {
@@ -40,6 +46,46 @@ final class AddTransactionWizardViewModel {
         case failed(String)
     }
     var submitState: SubmitState = .idle
+
+    init(editingTransaction: Transaction? = nil) {
+        self.editingTransaction = editingTransaction
+        guard let txn = editingTransaction else { return }
+
+        // Pre-fill state from the existing row.
+        self.selectedType = txn.type
+        self.amountString = Self.formatAmountForKeypad(txn.amount)
+        switch txn.type {
+        case .transfer:
+            self.selectedFromAccountId = txn.accountId
+            self.selectedToAccountId = txn.toAccountId
+        case .expense, .income, .adjustment:
+            self.selectedAccountId = txn.accountId
+        }
+        self.selectedCategoryId = txn.categoryId
+        self.note = txn.note ?? ""
+        if let parsed = Self.parseTransactionDate(txn.transactionDate) {
+            self.transactionDate = parsed
+        }
+        self.selectedGoalId = txn.paidFromGoalId
+    }
+
+    /// Convert a decimal amount into the keypad string. Drops trailing
+    /// ".00" so e.g. `50` displays as "50" not "50.00".
+    private static func formatAmountForKeypad(_ amount: Decimal) -> String {
+        let ns = NSDecimalNumber(decimal: amount)
+        if ns.doubleValue.truncatingRemainder(dividingBy: 1) == 0 {
+            return "\(ns.intValue)"
+        }
+        return "\(ns.doubleValue)"
+    }
+
+    private static func parseTransactionDate(_ str: String) -> Date? {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        return f.date(from: str)
+    }
 
     // MARK: - Step 1 logic
 
@@ -141,14 +187,26 @@ final class AddTransactionWizardViewModel {
         let categoryId: UUID?
         let goalId: UUID?
 
+        let paidFromGoalId: UUID?
         switch selectedType {
-        case .expense, .income:
+        case .expense:
             guard let acc = selectedAccountId,
                   let cat = selectedCategoryId else { return nil }
             accountId = acc
             toAccountId = nil
             categoryId = cat
-            goalId = selectedGoalId  // always nil in 1B-2c
+            goalId = nil
+            // Only expenses can be "paid from a target" — income/transfer
+            // routes don't surface the picker.
+            paidFromGoalId = selectedGoalId
+        case .income:
+            guard let acc = selectedAccountId,
+                  let cat = selectedCategoryId else { return nil }
+            accountId = acc
+            toAccountId = nil
+            categoryId = cat
+            goalId = nil
+            paidFromGoalId = nil
         case .transfer:
             guard let from = selectedFromAccountId,
                   let to = selectedToAccountId,
@@ -159,6 +217,7 @@ final class AddTransactionWizardViewModel {
             toAccountId = to      // destination
             categoryId = nil
             goalId = nil          // transfers never link to goals
+            paidFromGoalId = nil
         case .adjustment:
             // Not creatable from the wizard — only web's Reconcile flow
             // produces adjustment rows. Bail defensively if reached.
@@ -173,7 +232,8 @@ final class AddTransactionWizardViewModel {
             toAccountId: toAccountId,
             categoryId: categoryId,
             transactionDate: dateString,
-            note: noteValue
+            note: noteValue,
+            paidFromGoalId: paidFromGoalId
         )
 
         let optimistic = Transaction(
@@ -185,7 +245,7 @@ final class AddTransactionWizardViewModel {
             toAccountId: toAccountId,
             categoryId: categoryId,
             goalId: goalId,
-            paidFromGoalId: nil,
+            paidFromGoalId: paidFromGoalId,
             transactionDate: dateString,
             note: noteValue,
             softDeleted: false,
@@ -195,6 +255,55 @@ final class AddTransactionWizardViewModel {
         )
 
         return (draft, optimistic)
+    }
+
+    /// Build the update payload for the T2 edit path. Returns nil if the
+    /// current state isn't a valid transaction (shouldn't happen if Step 3
+    /// reached this point legitimately).
+    func buildUpdatePayload() -> TransactionUpdate? {
+        guard let amount = Decimal(string: amountString.isEmpty ? "0" : amountString),
+              amount > 0 else { return nil }
+
+        let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let noteValue: String? = trimmedNote.isEmpty ? nil : trimmedNote
+        let dateString = Self.formatTransactionDate(transactionDate)
+
+        let accountId: UUID
+        let toAccountId: UUID?
+        let categoryId: UUID?
+        let paidFromGoalId: UUID?
+
+        switch selectedType {
+        case .expense:
+            guard let acc = selectedAccountId,
+                  let cat = selectedCategoryId else { return nil }
+            accountId = acc; toAccountId = nil; categoryId = cat
+            paidFromGoalId = selectedGoalId
+        case .income:
+            guard let acc = selectedAccountId,
+                  let cat = selectedCategoryId else { return nil }
+            accountId = acc; toAccountId = nil; categoryId = cat
+            paidFromGoalId = nil
+        case .transfer:
+            guard let from = selectedFromAccountId,
+                  let to = selectedToAccountId,
+                  from != to else { return nil }
+            accountId = from; toAccountId = to; categoryId = nil
+            paidFromGoalId = nil
+        case .adjustment:
+            return nil
+        }
+
+        return TransactionUpdate(
+            type: selectedType,
+            amount: amount,
+            accountId: accountId,
+            toAccountId: toAccountId,
+            categoryId: categoryId,
+            transactionDate: dateString,
+            note: noteValue,
+            paidFromGoalId: paidFromGoalId
+        )
     }
 
     private static func formatTransactionDate(_ date: Date) -> String {
