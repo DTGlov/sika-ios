@@ -42,6 +42,17 @@ struct AuthenticatedRootView: View {
         }
         .background(SikaTheme.Color.background)
         .ignoresSafeArea(.keyboard)
+        .overlay(alignment: .bottom) {
+            // Global momentum-float bubbles. Any surface that calls
+            // appState.enqueueMomentumFloat(points:) renders here. Sits
+            // BEHIND the FAB overlay so the bubbles don't intercept taps.
+            MomentumFloatContainer()
+        }
+        .overlay(alignment: .top) {
+            // Global milestone toast. Fires 500ms after the type-aware
+            // "Logged" toast and lasts 3s.
+            MilestoneToastView()
+        }
         .overlay(alignment: .bottomTrailing) {
             FloatingActionButton(
                 action: { isAddTransactionPresented = true }

@@ -1,21 +1,43 @@
 import SwiftUI
 import Supabase
+import UIKit
 
 /// Multi-step wizard for Add Transaction. Owns shared state across steps.
 /// Replaces the AddTransactionSheet placeholder that the FAB previously opened.
+///
+/// T2: also serves as Edit Transaction when `editingTransaction != nil`. The
+/// edit path pre-fills all wizard state, branches save → update, and skips
+/// the mutation chain (no streak/momentum/badge re-ticks on edit).
 struct AddTransactionWizardView: View {
     let accounts: [Account]
     let categories: [TransactionCategory]
+    let editingTransaction: Transaction?
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
-    @State private var viewModel = AddTransactionWizardViewModel()
+    @State private var viewModel: AddTransactionWizardViewModel
     @State private var showSavedToast = false
+    @State private var savedToastMessage = "Saved"
     @State private var showSaveErrorToast = false
     @State private var saveErrorMessage = ""
 
     private let transactionService = TransactionService()
+
+    init(
+        accounts: [Account],
+        categories: [TransactionCategory],
+        editingTransaction: Transaction? = nil
+    ) {
+        self.accounts = accounts
+        self.categories = categories
+        self.editingTransaction = editingTransaction
+        self._viewModel = State(
+            initialValue: AddTransactionWizardViewModel(
+                editingTransaction: editingTransaction
+            )
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -54,6 +76,7 @@ struct AddTransactionWizardView: View {
             WizardBottomBar(
                 viewModel: viewModel,
                 accounts: accounts,
+                isEditMode: viewModel.isEditMode,
                 onSave: { Task { await performSave() } }
             )
             .padding(.horizontal, SikaTheme.Spacing.lg)
@@ -62,9 +85,9 @@ struct AddTransactionWizardView: View {
         }
         .sikaToast(
             isShown: $showSavedToast,
-            message: "Saved",
-            variant: .success,
-            duration: .milliseconds(1200)
+            message: savedToastMessage,
+            variant: viewModel.isEditMode ? .success : .successGreen,
+            duration: viewModel.isEditMode ? .milliseconds(1200) : .milliseconds(2500)
         )
         .sikaToast(
             isShown: $showSaveErrorToast,
@@ -83,6 +106,17 @@ struct AddTransactionWizardView: View {
             return
         }
 
+        // Medium haptic on save tap, parity with Sika save pattern across surfaces.
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        if let editing = viewModel.editingTransaction {
+            await performEdit(existingId: editing.id)
+        } else {
+            await performAdd(userId: userId)
+        }
+    }
+
+    private func performAdd(userId: UUID) async {
         guard let prepared = viewModel.prepareDraftAndOptimistic(userId: userId) else {
             saveErrorMessage = "Couldn't prepare transaction"
             showSaveErrorToast = true
@@ -110,11 +144,25 @@ struct AddTransactionWizardView: View {
             AnalyticsService.shared.capture(.transactionLogged(type: analyticsType, bucket: nil))
 
             // Phase 9: streak/momentum/badge hooks. Fire-and-forget so the
-            // wizard's success animation isn't blocked.
-            Task { await appState.fireTransactionLoggedHooks() }
+            // wizard's success animation isn't blocked. T2: also enqueues
+            // the +N pts float and (when crossed) the milestone toast.
+            Task {
+                await appState.fireTransactionLoggedHooks()
+                // T2: if this expense was paid from a target, check whether
+                // the goal's fund now meets/exceeds target — awards
+                // .goalCompleted (+100pts) and fires the badge trigger.
+                if let goalId = saved.paidFromGoalId {
+                    await appState.checkGoalCompletionFromPayment(goalId: goalId)
+                }
+            }
+
+            // T2: refresh T1's list (server respects current filters — new
+            // row appears at the top only if it matches).
+            Task { await appState.refreshTransactionsListAfterSave() }
 
             viewModel.submitState = .succeeded
 
+            savedToastMessage = toastMessage(for: viewModel.selectedType)
             showSavedToast = true
             try? await Task.sleep(for: .milliseconds(800))
             dismiss()
@@ -128,12 +176,57 @@ struct AddTransactionWizardView: View {
             #endif
         }
     }
+
+    /// Edit path. CRITICAL: never call fireTransactionLoggedHooks here —
+    /// editing must not re-tick streaks/momentum/badges.
+    private func performEdit(existingId: UUID) async {
+        guard let payload = viewModel.buildUpdatePayload() else {
+            saveErrorMessage = "Couldn't prepare update"
+            showSaveErrorToast = true
+            return
+        }
+
+        viewModel.submitState = .submitting
+
+        do {
+            let updated = try await transactionService.update(id: existingId, payload: payload)
+            appState.replaceTransaction(updated)
+
+            // Reflect in T1's joined list so the row updates in place.
+            Task { await appState.refreshTransactionsListAfterSave() }
+
+            viewModel.submitState = .succeeded
+            savedToastMessage = "Saved"
+            showSavedToast = true
+            try? await Task.sleep(for: .milliseconds(800))
+            dismiss()
+        } catch {
+            viewModel.submitState = .failed(error.localizedDescription)
+            saveErrorMessage = "Couldn't save: \(error.localizedDescription)"
+            showSaveErrorToast = true
+            #if DEBUG
+            print("⚠️ Edit transaction save failed: \(error)")
+            #endif
+        }
+    }
+
+    /// Type-aware toast copy. "Logged" reads naturally only for created rows;
+    /// edits use a generic "Saved" — see performEdit.
+    private func toastMessage(for type: TransactionType) -> String {
+        switch type {
+        case .expense:    return "Expense logged"
+        case .income:     return "Income logged"
+        case .transfer:   return "Transfer logged"
+        case .adjustment: return "Adjustment logged"
+        }
+    }
 }
 
 /// Bottom action bar. Step 1 shows only Next; Step 2 shows Back + Next; Step 3 shows Back + Save.
 private struct WizardBottomBar: View {
     @Bindable var viewModel: AddTransactionWizardViewModel
     let accounts: [Account]
+    let isEditMode: Bool
     let onSave: () -> Void
 
     var body: some View {
@@ -157,6 +250,7 @@ private struct WizardBottomBar: View {
                 SaveButton(
                     isEnabled: viewModel.canSaveFromStep3(),
                     isSubmitting: viewModel.submitState == .submitting,
+                    label: isEditMode ? "Save" : "Add",
                     action: onSave
                 )
             }
@@ -212,10 +306,11 @@ private struct WizardBackButton: View {
     }
 }
 
-/// "Save" gold pill button. Shows ProgressView while submitting.
+/// Save/Add gold pill button. Shows ProgressView while submitting.
 private struct SaveButton: View {
     let isEnabled: Bool
     let isSubmitting: Bool
+    let label: String
     let action: () -> Void
 
     var body: some View {
@@ -226,7 +321,7 @@ private struct SaveButton: View {
                         .progressViewStyle(.circular)
                         .tint(SikaTheme.Color.primaryForeground)
                 } else {
-                    Text("Save")
+                    Text(label)
                         .font(SikaTheme.Typography.sans(16, weight: .semibold))
                 }
             }

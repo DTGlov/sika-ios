@@ -5,10 +5,12 @@ import SwiftUI
 struct Step3DetailsView: View {
     @Bindable var viewModel: AddTransactionWizardViewModel
 
+    @Environment(AppState.self) private var appState
+
     @State private var isTargetSectionExpanded = false
     @AppStorage("addTransaction.targetTutorialDismissed") private var hasSeenTargetTutorial = false
     @State private var showDatePicker = false
-    @State private var showEmptyTargetsSheet = false
+    @State private var showTargetPicker = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: SikaTheme.Spacing.lg) {
@@ -39,9 +41,9 @@ struct Step3DetailsView: View {
             DatePickerSheet(date: $viewModel.transactionDate, isPresented: $showDatePicker)
                 .presentationDetents([.medium])
         }
-        .sheet(isPresented: $showEmptyTargetsSheet) {
-            EmptyTargetsSheet(isPresented: $showEmptyTargetsSheet)
-                .presentationDetents([.medium])
+        .sheet(isPresented: $showTargetPicker) {
+            TargetGoalPicker(selectedGoalId: $viewModel.selectedGoalId)
+                .presentationDetents([.medium, .large])
         }
     }
 
@@ -193,11 +195,9 @@ struct Step3DetailsView: View {
     // MARK: - Target Picker Row
 
     private var targetPickerRow: some View {
-        Button(action: { showEmptyTargetsSheet = true }) {
-            HStack {
-                Text("— Not from a target")
-                    .font(SikaTheme.Typography.sans(15, weight: .semibold))
-                    .foregroundStyle(SikaTheme.Color.foreground)
+        Button(action: { showTargetPicker = true }) {
+            HStack(spacing: SikaTheme.Spacing.sm) {
+                pickerLabel
                 Spacer()
                 VStack(spacing: 2) {
                     Image(systemName: "chevron.up")
@@ -213,5 +213,25 @@ struct Step3DetailsView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var pickerLabel: some View {
+        if let goalId = viewModel.selectedGoalId,
+           let goal = (appState.goals.first { $0.id == goalId } ?? appState.goalsList.first { $0.id == goalId }) {
+            HStack(spacing: 6) {
+                Text(IconResolver.resolve(goal.icon))
+                    .font(.system(size: 16))
+                Text(goal.name)
+                    .font(SikaTheme.Typography.sans(15, weight: .semibold))
+                    .foregroundStyle(SikaTheme.Color.foreground)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        } else {
+            Text("— Not from a target")
+                .font(SikaTheme.Typography.sans(15, weight: .semibold))
+                .foregroundStyle(SikaTheme.Color.foreground)
+        }
     }
 }

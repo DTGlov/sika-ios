@@ -122,6 +122,21 @@ final class TransactionService {
             .execute()
     }
 
+    /// Update an existing transaction (T2 edit branch).
+    /// Returns the persisted row. Does NOT fire mutation hooks — the caller
+    /// is responsible for keeping the edit branch off the streak/momentum/
+    /// badge re-tick path.
+    func update(id: UUID, payload: TransactionUpdate) async throws -> Transaction {
+        let response: PostgrestResponse<Transaction> = try await client
+            .from("transactions")
+            .update(payload)
+            .eq("id", value: id)
+            .select()
+            .single()
+            .execute()
+        return response.value
+    }
+
     // MARK: - Helpers
 
     private func sortToColumn(_ sort: TransactionFilters.SortKey) -> (column: String, ascending: Bool) {

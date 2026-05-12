@@ -77,6 +77,8 @@ struct TransactionDraft: Encodable {
     let categoryId: UUID?
     let transactionDate: String
     let note: String?
+    /// EXPENSE rows paid from a target goal's accumulated savings. Wired in T2.
+    let paidFromGoalId: UUID?
 
     enum CodingKeys: String, CodingKey {
         case userId = "user_id"
@@ -87,5 +89,31 @@ struct TransactionDraft: Encodable {
         case categoryId = "category_id"
         case transactionDate = "transaction_date"
         case note
+        case paidFromGoalId = "paid_from_goal_id"
+    }
+}
+
+/// Update payload for T2's edit flow. Same shape as TransactionDraft minus
+/// `user_id` (immutable post-insert). Notably absent: `is_active` — the
+/// transactions table has no such column (phantom from yesterday).
+struct TransactionUpdate: Encodable {
+    let type: TransactionType
+    let amount: Decimal
+    let accountId: UUID
+    let toAccountId: UUID?
+    let categoryId: UUID?
+    let transactionDate: String
+    let note: String?
+    let paidFromGoalId: UUID?
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case amount
+        case accountId = "account_id"
+        case toAccountId = "to_account_id"
+        case categoryId = "category_id"
+        case transactionDate = "transaction_date"
+        case note
+        case paidFromGoalId = "paid_from_goal_id"
     }
 }
