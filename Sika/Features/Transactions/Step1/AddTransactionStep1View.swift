@@ -16,6 +16,11 @@ import SwiftUI
 struct Step1Content: View {
     @Bindable var viewModel: AddTransactionWizardViewModel
     let accounts: [Account]
+    /// T3: when supplied, tapping ReconcileLink invokes this instead of the
+    /// legacy "coming soon" toast. The parent then dismisses the wizard
+    /// and opens the standalone ReconcileAccountSheet pre-filled with the
+    /// wizard's currently-selected account.
+    var onReconcileTap: (() -> Void)? = nil
 
     @State private var showReconcileToast = false
 
@@ -45,7 +50,13 @@ struct Step1Content: View {
                     )
 
                     if viewModel.step1ShowsAccountsAndReconcile {
-                        ReconcileLink(onTap: { showReconcileToast = true })
+                        ReconcileLink(onTap: {
+                            if let handler = onReconcileTap {
+                                handler()
+                            } else {
+                                showReconcileToast = true
+                            }
+                        })
 
                         AccountChipsRow(
                             accounts: accounts,

@@ -111,6 +111,11 @@ final class AppState {
     /// delay so it appears after the type-aware "Logged" toast.
     private(set) var pendingMilestoneToast: MilestoneToastEvent? = nil
 
+    /// Pending amber warning toast (T3). Set by `enqueueWarningToast` after
+    /// the wizard's "Log anyway" save completes. Rendered by
+    /// AuthenticatedRootView at the top of the screen, auto-dismisses in 3s.
+    private(set) var pendingWarningToast: WarningToastEvent? = nil
+
     // MARK: - Phase T1 (Transactions tab)
 
     /// Joined transaction rows for the Transactions tab list.
@@ -2182,6 +2187,18 @@ final class AppState {
         pendingMilestoneToast = nil
     }
 
+    /// T3 — enqueue an amber warning toast (e.g. for the IBS "Log anyway"
+    /// override surface). Overwrites any in-flight warning; the rendering
+    /// view handles dismissal.
+    func enqueueWarningToast(_ message: String) {
+        pendingWarningToast = WarningToastEvent(message: message)
+    }
+
+    /// Called by WarningToastView after its 3s display window.
+    func dismissWarningToast() {
+        pendingWarningToast = nil
+    }
+
     /// Goal completion check from a paid_from_goal_id expense. Called after
     /// fireTransactionLoggedHooks when the saved transaction is linked to a
     /// target goal. If the goal's net balance now hits the target, marks
@@ -2270,5 +2287,17 @@ struct MilestoneToastEvent: Identifiable, Equatable {
         case .logging: return "🔥 \(days)-day logging streak!"
         case .savings: return "💰 \(days)-week savings streak!"
         }
+    }
+}
+
+/// One amber warning toast (T3). Fires when the wizard's "Log anyway"
+/// override completes, signalling that the account is now negative.
+struct WarningToastEvent: Identifiable, Equatable {
+    let id: UUID
+    let message: String
+
+    init(message: String) {
+        self.id = UUID()
+        self.message = message
     }
 }
