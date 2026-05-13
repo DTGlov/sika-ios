@@ -1,9 +1,10 @@
 import SwiftUI
 
 /// Slate-gray "Reconcile an account balance instead" link below the number pad.
-/// Tappable; parent decides what happens. T3 wires this to dismiss the wizard
-/// and open the standalone ReconcileAccountSheet pre-filled with the wizard's
-/// currently-selected account.
+/// Tappable; parent decides what happens. T3 IBS-redesign wires this to set
+/// `AppState.reconcileContext`, triggering the wizard's in-place reconcile
+/// mode swap (no sheet dismiss/re-present) — mirrors the IBS "Reconcile
+/// balance" remediation path.
 struct ReconcileLink: View {
     let onTap: () -> Void
 

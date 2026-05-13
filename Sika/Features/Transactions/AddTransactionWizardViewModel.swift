@@ -38,6 +38,12 @@ final class AddTransactionWizardViewModel {
     var transactionDate: Date = Date()
     var selectedGoalId: UUID? = nil  // wired in T2
 
+    /// Actual-balance keypad input for the in-wizard reconcile step
+    /// (entered via IBS "Reconcile balance" or Step 1's ReconcileLink).
+    /// Empty until the user types; cleared whenever reconcile mode is
+    /// entered fresh.
+    var reconcileActualString: String = ""
+
     // Submit state
     enum SubmitState: Equatable {
         case idle
@@ -204,9 +210,44 @@ final class AddTransactionWizardViewModel {
         return InsufficientBalanceContext(
             accountId: accountId,
             accountName: account.name,
-            currentBalance: current,
-            attemptedAmount: amount
+            accountBalance: current,
+            amountRequested: amount
         )
+    }
+
+    /// Enter in-wizard reconcile mode. Called from the wizard's
+    /// `.onChange(of: appState.reconcileContext)` when a non-nil context
+    /// arrives (IBS "Reconcile balance" or Step 1's ReconcileLink shortcut).
+    /// Mirrors web's pre-fill `useEffect` at transaction-sheet.tsx:122-127.
+    func enterReconcileMode(accountId: UUID) {
+        selectedType = .adjustment
+        selectedAccountId = accountId
+        reconcileActualString = ""
+        note = ""
+    }
+
+    /// Parse the reconcile keypad input into a Decimal. Empty / unparseable
+    /// returns nil so the Save button stays disabled.
+    var reconcileActualDecimal: Decimal? {
+        let trimmed = reconcileActualString.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        return Decimal(string: trimmed)
+    }
+
+    /// Signed diff for the in-wizard reconcile step: `actual - sika`.
+    /// Returns nil when no actual is entered yet.
+    func reconcileDiff(sikaBalance: Decimal) -> Decimal? {
+        guard let actual = reconcileActualDecimal else { return nil }
+        return actual - sikaBalance
+    }
+
+    /// Whether the wizard's reconcile Save button is tappable. Mirrors
+    /// `canSubmit` from the standalone `ReconcileAccountSheet`: non-empty
+    /// input, parseable, non-zero diff, not currently submitting.
+    func canSaveReconcile(sikaBalance: Decimal) -> Bool {
+        guard submitState != .submitting,
+              let diff = reconcileDiff(sikaBalance: sikaBalance) else { return false }
+        return diff != 0
     }
 
     /// Build both the insert payload (TransactionDraft) and the optimistic local
