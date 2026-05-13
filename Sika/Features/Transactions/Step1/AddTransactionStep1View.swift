@@ -16,13 +16,8 @@ import SwiftUI
 struct Step1Content: View {
     @Bindable var viewModel: AddTransactionWizardViewModel
     let accounts: [Account]
-    /// T3: when supplied, tapping ReconcileLink invokes this instead of the
-    /// legacy "coming soon" toast. The parent then dismisses the wizard
-    /// and opens the standalone ReconcileAccountSheet pre-filled with the
-    /// wizard's currently-selected account.
-    var onReconcileTap: (() -> Void)? = nil
 
-    @State private var showReconcileToast = false
+    @Environment(AppState.self) private var appState
 
     var body: some View {
         VStack(alignment: .leading, spacing: SikaTheme.Spacing.lg) {
@@ -50,13 +45,7 @@ struct Step1Content: View {
                     )
 
                     if viewModel.step1ShowsAccountsAndReconcile {
-                        ReconcileLink(onTap: {
-                            if let handler = onReconcileTap {
-                                handler()
-                            } else {
-                                showReconcileToast = true
-                            }
-                        })
+                        ReconcileLink(onTap: handleReconcileTap)
 
                         AccountChipsRow(
                             accounts: accounts,
@@ -75,6 +64,30 @@ struct Step1Content: View {
             .scrollDismissesKeyboard(.interactively)
             .scrollIndicators(.hidden)
         }
-        .sikaToast(isShown: $showReconcileToast, message: "Reconcile coming soon")
+    }
+
+    /// ReconcileLink shortcut — writes the currently-picked account (or the
+    /// first active account as fallback) into `appState.reconcileContext`.
+    /// The wizard's `.onChange` handler swaps to reconcile mode in place;
+    /// no sheet dismiss/re-present.
+    private func handleReconcileTap() {
+        let pickedId = viewModel.selectedType == .transfer
+            ? viewModel.selectedFromAccountId
+            : viewModel.selectedAccountId
+
+        let target: Account? = pickedId
+            .flatMap { id in accounts.first(where: { $0.id == id }) }
+            ?? accounts.first(where: { $0.isActive != false })
+
+        guard let acc = target else { return }
+
+        let balance = AccountBalanceEngine.balance(
+            for: acc,
+            in: appState.accountsBalances
+        )
+        appState.reconcileContext = ReconcileContext(
+            accountId: acc.id,
+            sikaBalance: balance
+        )
     }
 }

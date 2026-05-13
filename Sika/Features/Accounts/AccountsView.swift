@@ -10,8 +10,11 @@ struct AccountsView: View {
     @State private var showFormSheet: Bool = false
     @State private var editingAccount: Account? = nil
 
-    @State private var showReconcileSheet: Bool = false
-    @State private var reconcileTarget: Account? = nil
+    /// Identifiable handle for the reconcile sheet. `.sheet(item:)` reads
+    /// account + frozen sikaBalance from this single binding — replaces
+    /// the prior `.sheet(isPresented:)` + separate `@State` target that
+    /// raced on first tap and showed stale content on second tap.
+    @State private var reconcileContext: ReconcileContext? = nil
 
     @State private var showDeleteSheet: Bool = false
     @State private var deletingAccount: Account? = nil
@@ -64,8 +67,13 @@ struct AccountsView: View {
                                 balance: AccountBalanceEngine.balance(for: account, in: appState.accountsBalances),
                                 currencyCode: appState.currencyCode,
                                 onReconcile: {
-                                    reconcileTarget = account
-                                    showReconcileSheet = true
+                                    reconcileContext = ReconcileContext(
+                                        accountId: account.id,
+                                        sikaBalance: AccountBalanceEngine.balance(
+                                            for: account,
+                                            in: appState.accountsBalances
+                                        )
+                                    )
                                 },
                                 onEdit: {
                                     editingAccount = account
@@ -101,11 +109,11 @@ struct AccountsView: View {
                 )
             }
         }
-        .sheet(isPresented: $showReconcileSheet) {
-            if let acc = reconcileTarget {
+        .sheet(item: $reconcileContext) { ctx in
+            if let acc = appState.accounts.first(where: { $0.id == ctx.accountId }) {
                 ReconcileAccountSheet(
                     account: acc,
-                    currentBalance: AccountBalanceEngine.balance(for: acc, in: appState.accountsBalances),
+                    currentBalance: ctx.sikaBalance,
                     currencyCode: appState.currencyCode,
                     onCompleted: { /* AppState reloads balances */ }
                 )
