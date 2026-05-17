@@ -290,7 +290,10 @@ struct AddTransactionWizardView: View {
 
             // T2: refresh T1's list (server respects current filters — new
             // row appears at the top only if it matches).
-            Task { await appState.refreshTransactionsListAfterSave() }
+            Task {
+                await appState.refreshTransactionsListAfterSave()
+                await appState.recomputeAccountBalances()
+            }
 
             viewModel.submitState = .succeeded
 
