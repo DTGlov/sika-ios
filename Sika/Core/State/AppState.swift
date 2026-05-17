@@ -586,6 +586,8 @@ final class AppState {
         self.todayDigest = digestPair.0
         self.digestRead = digestPair.1
 
+        await recomputeAccountBalances()
+
         await loadNudgesAndRecurring()
         await loadHealthSnapshot()
         await fireCycleEndedBadgeCheck()
@@ -831,6 +833,7 @@ final class AppState {
                 incomeNudges.removeAll { $0.id == nudge.id }
             }
             await refreshHomeData()
+            await recomputeAccountBalances()
             // Phase 9: streak/momentum/badge hooks. Fire-and-forget.
             Task { await fireTransactionLoggedHooks() }
         } catch {
@@ -900,6 +903,7 @@ final class AppState {
                 dueDate: dueDate
             )
             await refreshHomeData()
+            await recomputeAccountBalances()
             // Phase 9: streak/momentum/badge hooks. Fire-and-forget.
             Task { await fireTransactionLoggedHooks() }
         } catch {
@@ -1857,6 +1861,7 @@ final class AppState {
             // Refresh: pulls new amounts + auto-completion + score recompute.
             await loadGoalsList()
             await refreshHealthSnapshot()
+            await recomputeAccountBalances()
             return true
         } catch {
             #if DEBUG
